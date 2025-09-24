@@ -37,12 +37,13 @@ interface TaskStore {
 }
 
 const createTaskWithTemplate = (taskData: { title: string; coordinates: { x: number; y: number } }): TaskDocument => {
+  const now = new Date().toISOString();
   const checklistSnapshot: ChecklistItem[] = DEFAULT_CHECKLIST.defaultItems.map(item => ({
     id: crypto.randomUUID(),
     text: item.text,
     status: 'not_started' as const,
     order: item.order,
-    createdAt: new Date()
+    createdAt: now
   }));
 
   return {
@@ -53,8 +54,8 @@ const createTaskWithTemplate = (taskData: { title: string; coordinates: { x: num
     checklist: checklistSnapshot,
     coordinates: taskData.coordinates,
     version: 1,
-    createdAt: new Date(),
-    updatedAt: new Date()
+    createdAt: now,
+    updatedAt: now
   };
 };
 
@@ -73,9 +74,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasksLoaded: true 
     });
     
-    userSession.database.tasks.find().$.subscribe((tasks: RxDocument<TaskDocument>[]) => {
-      set({ tasks: tasks.map((doc: RxDocument<TaskDocument>) => doc.toJSON() as TaskDocument) });
-    });
+    /* Load-once strategy - no reactive subscription needed for single-user offline app */
   },
   
   createTask: async (taskData: { title: string; coordinates: { x: number; y: number } }, userSession: UserSession) => {
@@ -85,6 +84,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     
     await userSession.database.tasks.insert(taskWithTemplate);
     
+    /* Explicit state update - manual sync with database per load-once architecture */
     set(state => ({
       tasks: [...state.tasks, taskWithTemplate]
     }));
@@ -97,7 +97,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = await userSession.database.tasks.findOne(id).exec();
     if (!task) return;
     
-    await task.update({ ...updates, updatedAt: new Date() });
+    await task.update({ ...updates, updatedAt: new Date().toISOString() });
+    
+    /* Explicit state update - immutable update pattern */
+    set(state => ({
+      tasks: state.tasks.map(t => 
+        t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
+      )
+    }));
     get().markTaskForRepaint(id);
   },
   
@@ -125,7 +132,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       item.id === itemId ? { ...item, status: newStatus } : item
     );
     
-    await task.update({ checklist: updatedChecklist, updatedAt: new Date() });
+    await task.update({ checklist: updatedChecklist, updatedAt: new Date().toISOString() });
+    
+    /* Explicit state update - immutable checklist update */
+    set(state => ({
+      tasks: state.tasks.map(t => 
+        t.id === taskId ? { ...t, checklist: updatedChecklist, updatedAt: new Date().toISOString() } : t
+      )
+    }));
     get().markTaskForRepaint(taskId);
   },
   
@@ -141,13 +155,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       text: itemText,
       status: 'not_started',
       order: maxOrder + 1,
-      createdAt: new Date()
+      createdAt: new Date().toISOString()
     };
     
     await task.update({ 
       checklist: [...task.checklist, newItem],
-      updatedAt: new Date()
+      updatedAt: new Date().toISOString()
     });
+    
+    /* Explicit state update - immutable checklist addition */
+    const updatedChecklist = [...task.checklist, newItem];
+    set(state => ({
+      tasks: state.tasks.map(t => 
+        t.id === taskId ? { ...t, checklist: updatedChecklist, updatedAt: new Date().toISOString() } : t
+      )
+    }));
     get().markTaskForRepaint(taskId);
   },
   
@@ -161,8 +183,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     
     await task.update({ 
       checklist: updatedChecklist,
-      updatedAt: new Date()
+      updatedAt: new Date().toISOString()
     });
+    
+    /* Explicit state update - immutable checklist item removal */
+    set(state => ({
+      tasks: state.tasks.map(t => 
+        t.id === taskId ? { ...t, checklist: updatedChecklist, updatedAt: new Date().toISOString() } : t
+      )
+    }));
     get().markTaskForRepaint(taskId);
   },
   
@@ -178,8 +207,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     
     await task.update({ 
       checklist: updatedChecklist,
-      updatedAt: new Date()
+      updatedAt: new Date().toISOString()
     });
+    
+    /* Explicit state update - immutable checklist text update */
+    set(state => ({
+      tasks: state.tasks.map(t => 
+        t.id === taskId ? { ...t, checklist: updatedChecklist, updatedAt: new Date().toISOString() } : t
+      )
+    }));
   },
 
   markTaskForRepaint: (taskId) => {

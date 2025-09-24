@@ -21,7 +21,7 @@ export interface ChecklistItem {
   text: string;
   status: ChecklistItemStatus;
   order: number;
-  createdAt: Date;
+  createdAt: string; // ISO string for RxDB compatibility
 }
 
 /* Task coordinates interface */
@@ -39,8 +39,8 @@ export interface TaskDocument {
   checklistName: string;
   checklist: ChecklistItem[];
   version: number;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string; // ISO string for RxDB compatibility
+  updatedAt: string; // ISO string for RxDB compatibility
 }
 
 /* Default checklist template structure */
