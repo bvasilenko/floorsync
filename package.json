@@ -11,8 +11,10 @@
     "test": "echo \"No tests yet\" && exit 0"
   },
   "dependencies": {
+    "@types/pixi.js": "^4.8.9",
     "ajv": "^8.17.1",
     "dexie": "^4.2.0",
+    "pixi.js": "^8.13.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.1",

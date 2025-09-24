@@ -10,12 +10,9 @@ const Login: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    /* Clear previous errors */
     clearError();
-    
     await login(name.trim());
     
-    /* Navigate to dashboard on successful login */
     if (useAuthStore.getState().userSession) {
       navigate('/dashboard');
     }

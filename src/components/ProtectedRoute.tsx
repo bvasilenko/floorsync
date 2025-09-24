@@ -5,7 +5,6 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
-/* Dashboard route protection - redirect to login if not authenticated */
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const isAuthenticated = isUserLoggedIn();
   
