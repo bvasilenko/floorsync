@@ -41,3 +41,17 @@ src/
   stores/         # Zustand state management
   types/          # TypeScript type definitions
 ```
+
+## Roadmap
+
+### Floor Plan Navigation
+- [ ] **Mouse wheel zooming** - Zoom in/out using mouse wheel
+- [ ] **Click-and-drag panning** - Pan around floor plan by dragging
+- [ ] **Trackpad pinch gestures** - Multi-touch zoom on trackpads and touch devices
+- [ ] **Viewport manipulation** - Programmatic viewport control (fit-to-view, center on task, etc.)
+
+### Future Enhancements
+- [ ] Keyboard shortcuts for navigation
+- [ ] Mini-map overview for large floor plans
+- [ ] Smooth zoom/pan animations
+- [ ] Zoom level indicators

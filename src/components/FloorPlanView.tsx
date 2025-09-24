@@ -1,26 +1,36 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as PIXI from 'pixi.js';
+
 import { useTaskStore } from '../stores/taskStore';
 import { useAuthStore } from '../stores/authStore';
-import type { TaskDocument } from '../types';
+import { FLOOR_PLAN_CONSTANTS } from '../constants';
+import type { TaskDocument, TaskCoordinates } from '../types';
 
 interface FloorPlanViewProps {
-  onTaskCreate?: (coordinates: { x: number; y: number }) => void;
+  onTaskCreate?: (coordinates: TaskCoordinates) => void;
 }
 
 /* PixiJS renderer for performance-optimized marker rendering */
 class FloorPlanRenderer {
-  public pixiApp: PIXI.Application | null = null;
+  private pixiApp: PIXI.Application | null = null;
   private floorPlanSprite: PIXI.Sprite | null = null;
   private markerContainer: PIXI.Container | null = null;
   private markerTextures: Map<string, PIXI.Graphics> = new Map();
+
+  get app(): PIXI.Application | null {
+    return this.pixiApp;
+  }
+
+  get canvas(): HTMLCanvasElement | null {
+    return this.pixiApp?.canvas ?? null;
+  }
 
   constructor() {
     console.log('!!! FloorPlanRenderer > constructor ( starting - no initialization )');
     console.log('!!! FloorPlanRenderer > constructor ( completed - awaiting async init )');
   }
 
-  async initialize(container: HTMLElement) {
+  async initialize(container: HTMLElement): Promise<void> {
     console.log('!!! FloorPlanRenderer > initialize ( starting )');
     
     const { width, height } = container.getBoundingClientRect();
@@ -32,8 +42,8 @@ class FloorPlanRenderer {
     
     console.log('!!! FloorPlanRenderer > initialize ( calling pixiApp.init with options )');
     await this.pixiApp.init({
-      width: width || 800,
-      height: height || 600,
+      width: width || FLOOR_PLAN_CONSTANTS.DEFAULT_WIDTH,
+      height: height || FLOOR_PLAN_CONSTANTS.DEFAULT_HEIGHT,
       backgroundColor: 0xf5f5f5,
       antialias: true,
       resolution: window.devicePixelRatio || 1,
@@ -150,7 +160,7 @@ class FloorPlanRenderer {
   }
 
   /* O(n) initial, O(1) React complexity */
-  renderAllMarkers(tasks: TaskDocument[]) {
+  renderAllMarkers(tasks: TaskDocument[]): void {
     console.log('!!! FloorPlanRenderer > renderAllMarkers ( tasks count:', tasks.length, ')');
     if (!this.markerContainer) {
       console.error('!!! FloorPlanRenderer > renderAllMarkers ( markerContainer is null - initialization required )');
@@ -193,12 +203,12 @@ class FloorPlanRenderer {
     
     console.log('!!! FloorPlanRenderer > renderSingleMarker > drawing circle ( beginFill, drawCircle, endFill )');
     marker.beginFill(color);
-    marker.drawCircle(0, 0, 12);
+    marker.drawCircle(0, 0, FLOOR_PLAN_CONSTANTS.MARKER_RADIUS);
     marker.endFill();
     
     console.log('!!! FloorPlanRenderer > renderSingleMarker > drawing border ( lineStyle, drawCircle )');
     marker.lineStyle(2, 0xffffff);
-    marker.drawCircle(0, 0, 12);
+    marker.drawCircle(0, 0, FLOOR_PLAN_CONSTANTS.MARKER_RADIUS);
 
     console.log('!!! FloorPlanRenderer > renderSingleMarker > setting position ( x:', screenCoords.x, 'y:', screenCoords.y, ')');
     marker.x = screenCoords.x;
@@ -214,7 +224,7 @@ class FloorPlanRenderer {
   }
 
   /* Selective repaint - O(changed) complexity */
-  repaintChangedMarkers(changedTaskIds: Set<string>, tasks: TaskDocument[]) {
+  repaintChangedMarkers(changedTaskIds: Set<string>, tasks: TaskDocument[]): void {
     if (!this.markerContainer) {
       console.error('!!! FloorPlanRenderer > repaintChangedMarkers ( markerContainer is null - initialization required )');
       return;
@@ -250,15 +260,15 @@ class FloorPlanRenderer {
 
   private getStatusColor(status: string): number {
     switch (status) {
-      case 'done': return 0x10b981; // green
-      case 'in_progress': return 0xf59e0b; // yellow
-      case 'blocked': return 0xef4444; // red
-      case 'final_check_awaiting': return 0x3b82f6; // blue
-      default: return 0x6b7280; // gray
+      case 'done': return FLOOR_PLAN_CONSTANTS.STATUS_COLORS.done;
+      case 'in_progress': return FLOOR_PLAN_CONSTANTS.STATUS_COLORS.in_progress;
+      case 'blocked': return FLOOR_PLAN_CONSTANTS.STATUS_COLORS.blocked;
+      case 'final_check_awaiting': return FLOOR_PLAN_CONSTANTS.STATUS_COLORS.final_check_awaiting;
+      default: return FLOOR_PLAN_CONSTANTS.STATUS_COLORS.not_started;
     }
   }
 
-  enableClick(callback: (coordinates: { x: number; y: number }) => void) {
+  enableClick(callback: (coordinates: { x: number; y: number }) => void): void {
     console.log('!!! FloorPlanRenderer > enableClick ( callback provided:', !!callback, ')');
     if (!this.floorPlanSprite) {
       console.log('!!! FloorPlanRenderer > enableClick > early return ( no floorPlanSprite )');
@@ -283,7 +293,7 @@ class FloorPlanRenderer {
     });
   }
 
-  destroy() {
+  destroy(): void {
     console.log('!!! FloorPlanRenderer > destroy ( starting )');
     
     // Destroy PixiJS application
@@ -294,23 +304,23 @@ class FloorPlanRenderer {
     console.log('!!! FloorPlanRenderer > destroy ( completed )');
   }
 
-  resize(mountElement: HTMLElement) {
+  resize(mountElement: HTMLElement): void {
     if (!this.pixiApp) {
       console.error('!!! FloorPlanRenderer > resize ( pixiApp is null - initialization required )');
       return;
     }
     
     const { width, height } = mountElement.getBoundingClientRect();
-    this.pixiApp.renderer.resize(width || 800, height || 600);
+    this.pixiApp.renderer.resize(width || FLOOR_PLAN_CONSTANTS.DEFAULT_WIDTH, height || FLOOR_PLAN_CONSTANTS.DEFAULT_HEIGHT);
     if (this.floorPlanSprite) {
       const texture = this.floorPlanSprite.texture;
-      const scaleX = (width || 800) / texture.width;
-      const scaleY = (height || 600) / texture.height;
+      const scaleX = (width || FLOOR_PLAN_CONSTANTS.DEFAULT_WIDTH) / texture.width;
+      const scaleY = (height || FLOOR_PLAN_CONSTANTS.DEFAULT_HEIGHT) / texture.height;
       const scale = Math.min(scaleX, scaleY) * 0.9;
       
       this.floorPlanSprite.scale.set(scale);
-      this.floorPlanSprite.x = (width || 800) / 2;
-      this.floorPlanSprite.y = (height || 600) / 2;
+      this.floorPlanSprite.x = (width || FLOOR_PLAN_CONSTANTS.DEFAULT_WIDTH) / 2;
+      this.floorPlanSprite.y = (height || FLOOR_PLAN_CONSTANTS.DEFAULT_HEIGHT) / 2;
     }
   }
 }
@@ -362,19 +372,22 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
         view.tabIndex = 0; // Enable keyboard focus
         console.log('!!! FloorPlanView > initRenderer > wrapper div styles set ( height: 100%, width: 100%, position: relative, tabIndex: 0 )');
         
-        // Initialize the renderer with the container for sizing
-        console.log('!!! FloorPlanView > initRenderer > renderer.initialize ( starting renderer initialization with mountElement )');
-        await renderer.initialize(mountElement);
+        // Initialize the renderer with the wrapper div for proper sizing
+        console.log('!!! FloorPlanView > initRenderer > renderer.initialize ( starting renderer initialization with view wrapper )');
+        await renderer.initialize(view);
         console.log('!!! FloorPlanView > initRenderer > renderer.initialize ( completed successfully )');
         
         /* Verify pixiApp was initialized */
-        if (!renderer.pixiApp) {
+        if (!renderer.app) {
           throw new Error('PixiJS Application failed to initialize');
         }
         
-        // Append the PixiJS canvas to the wrapper div
-        console.log('!!! FloorPlanView > initRenderer > appendChild ( appending canvas to wrapper div )');
-        view.appendChild(renderer.pixiApp.canvas);
+        /* Verify canvas was created */
+        if (!renderer.canvas) {
+          throw new Error('PixiJS Canvas failed to initialize');
+        }
+        
+        console.log('!!! FloorPlanView > initRenderer > canvas verification ( canvas exists:', !!renderer.canvas, ')');
         
         // Mount to React DOM element
         console.log('!!! FloorPlanView > initRenderer > mountElement.appendChild ( mounting wrapper to React element )');
@@ -385,8 +398,8 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
           console.log('!!! FloorPlanView > handleResize ( resize event triggered )');
           const { width, height } = mountElement.getBoundingClientRect();
           console.log('!!! FloorPlanView > handleResize > getBoundingClientRect ( width:', width, 'height:', height, ')');
-          if (renderer.pixiApp) {
-            renderer.pixiApp.renderer.resize(width || 800, height || 600);
+          if (renderer.app) {
+            renderer.app.renderer.resize(width || FLOOR_PLAN_CONSTANTS.DEFAULT_WIDTH, height || FLOOR_PLAN_CONSTANTS.DEFAULT_HEIGHT);
             renderer.resize(mountElement);
           }
           console.log('!!! FloorPlanView > handleResize ( resize completed )');
@@ -398,7 +411,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
         handleResize();
         
         // Enable click handling
-        if (stableOnTaskCreate && onTaskCreate) {
+        if (stableOnTaskCreate) {
           console.log('!!! FloorPlanView > initRenderer > renderer.enableClick ( enabling click handler with stableOnTaskCreate callback )');
           renderer.enableClick(stableOnTaskCreate);
         } else {
@@ -407,7 +420,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
         
         // Store references for cleanup
         console.log('!!! FloorPlanView > initRenderer > engineRef.current assignment ( storing references for cleanup )');
-        engineRef.current = { app: renderer.pixiApp!, renderer, view, handleResize };
+        engineRef.current = { app: renderer.app!, renderer, view, handleResize };
         console.log('!!! FloorPlanView > initRenderer > setIsLoading(false) ( marking initialization complete )');
         setIsLoading(false);
         console.log('!!! FloorPlanView > initRenderer ( completed successfully )');
@@ -450,7 +463,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
         console.log('!!! FloorPlanView > cleanup > engineRef.current is null ( no cleanup needed )');
       }
     };
-  }, [stableOnTaskCreate, onTaskCreate]);
+  }, [stableOnTaskCreate]);
 
   useEffect(() => {
     console.log('!!! FloorPlanView > useEffect-loadTasks trigger ( userSession:', !!userSession, 'isLoading:', isLoading, ')');

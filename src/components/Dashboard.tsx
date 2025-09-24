@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../stores/authStore';
-import { useTaskStore } from '../stores/taskStore';
+
 import FloorPlanView from './FloorPlanView';
 import TaskCreationModal from './TaskCreationModal';
+import { useAuthStore } from '../stores/authStore';
+import { useTaskStore } from '../stores/taskStore';
 import type { TaskCoordinates } from '../types';
 
 const Dashboard: React.FC = () => {

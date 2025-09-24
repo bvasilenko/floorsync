@@ -1,11 +1,8 @@
 import { Navigate } from 'react-router-dom';
 import { isUserLoggedIn } from '../utils/session';
+import type { RouteWrapperProps } from '../types';
 
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-}
-
-const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
+const ProtectedRoute = ({ children }: RouteWrapperProps): React.JSX.Element => {
   const isAuthenticated = isUserLoggedIn();
   
   if (!isAuthenticated) {

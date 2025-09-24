@@ -44,4 +44,4 @@ export const clearAuthState = (): void => {
 export const isUserLoggedIn = (): boolean => {
   const authState = getStoredAuthState();
   return authState !== null && authState.isAuthenticated;
-};;
+};

@@ -1,5 +1,8 @@
 import type { RxDatabase } from 'rxdb';
 
+/* Component interfaces */
+export * from './components';
+
 /* User session interface */
 export interface UserSession {
   userId: string;

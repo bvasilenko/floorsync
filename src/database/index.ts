@@ -1,9 +1,9 @@
-import { createRxDatabase } from 'rxdb';
+import { createRxDatabase, addRxPlugin } from 'rxdb';
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
-import { addRxPlugin } from 'rxdb';
 import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode';
 import { wrappedValidateAjvStorage } from 'rxdb/plugins/validate-ajv';
 import type { RxJsonSchema, RxDatabase } from 'rxdb';
+
 import type { TaskDocument } from '../types';
 
 /* Add dev-mode plugin for detailed error messages in development */

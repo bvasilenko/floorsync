@@ -1,19 +1,8 @@
 import { create } from 'zustand';
 import { getCurrentUserId } from '../utils/session';
+import { DEFAULT_CHECKLIST } from '../constants';
 import type { TaskDocument, ChecklistItem, ChecklistItemStatus, UserSession } from '../types';
 import type { RxDocument } from 'rxdb';
-
-const DEFAULT_CHECKLIST = {
-  name: "Standard Construction Task",
-  defaultItems: [
-    { text: "Review specifications", order: 1 },
-    { text: "Prepare materials", order: 2 },
-    { text: "Set up work area", order: 3 },
-    { text: "Execute task", order: 4 },
-    { text: "Quality check", order: 5 },
-    { text: "Clean up", order: 6 }
-  ]
-} as const;
 
 interface TaskStore {
   tasks: TaskDocument[];
