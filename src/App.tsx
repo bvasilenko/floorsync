@@ -1,22 +1,48 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
-import { useAuthStore } from './stores/authStore';
+import { useAuthStore, authStoreRx } from './stores/authStore';
+import { useReactiveComponent } from './hooks/useReactiveComponent';
+import type { UserSession } from './types';
 
 function App() {
-  const { restoreSession, userSession, isLoading } = useAuthStore();
+  const { when } = useReactiveComponent();
+  
+  /* Component state - ONLY updates when observables emit */
+  const [userSession, setUserSession] = useState<UserSession | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  /* Restore session on app startup */
+  /* CONTROLLED reactivity - subscribe only to what you need */
   useEffect(() => {
-    restoreSession();
-  }, [restoreSession]);
+    console.log('🎯 App: Setting up subscriptions');
+    
+    /* Only react to user session changes - SOLID DRY KISS decoupling */
+    when(authStoreRx.userSession$, (session) => {
+      console.log('📡 App: userSession changed', session?.userId || 'null');
+      setUserSession(session);
+    });
+    
+    /* Only react to loading state changes */
+    when(authStoreRx.isLoading$, (loading) => {
+      console.log('📡 App: isLoading changed', loading);
+      setIsLoading(loading);
+    });
+    
+    /* Initialize app - direct action call, no subscription needed */
+    console.log('🚀 App: Calling restoreSession');
+    useAuthStore.getState().restoreSession();
+  }, []); // Remove 'when' from dependencies to prevent re-subscription
 
-  /* Show loading screen during session restoration */
-  if (isLoading) {
+  /* Static access when needed - no reactive subscription, following Angular pattern */
+  const shouldShowLoading = () => {
+    return authStoreRx.snapshot.isLoading || isLoading;
+  };
+
+  if (shouldShowLoading()) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

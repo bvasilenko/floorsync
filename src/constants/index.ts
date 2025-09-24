@@ -16,6 +16,10 @@ export const FLOOR_PLAN_CONSTANTS = {
   DEFAULT_WIDTH: 800,
   DEFAULT_HEIGHT: 600,
   MARKER_RADIUS: 12,
+  FLOOR_PLAN_SCALE_FACTOR: 0.9,
+  MARKER_BORDER_WIDTH: 2,
+  BACKGROUND_COLOR: 0xf5f5f5,
+  MARKER_BORDER_COLOR: 0xffffff,
   STATUS_COLORS: {
     done: 0x10b981, // green
     in_progress: 0xf59e0b, // yellow

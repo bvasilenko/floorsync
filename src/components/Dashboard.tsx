@@ -1,30 +1,53 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import FloorPlanView from './FloorPlanView';
 import TaskCreationModal from './TaskCreationModal';
-import { useAuthStore } from '../stores/authStore';
-import { useTaskStore } from '../stores/taskStore';
-import type { TaskCoordinates } from '../types';
+import { useAuthStore, authStoreRx } from '../stores/authStore';
+import { useTaskStore, taskStoreRx } from '../stores/taskStore';
+import { useReactiveComponent } from '../hooks/useReactiveComponent';
+import type { TaskCoordinates, TaskDocument, UserSession } from '../types';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { logout, userSession } = useAuthStore();
-  const { tasks, loadAllTasks, createTask } = useTaskStore();
+  const { when } = useReactiveComponent();
+  const { logout } = useAuthStore();
+  const { createTask } = useTaskStore();
+  
+  /* Component state - ONLY updates when observables emit */
+  const [userSession, setUserSession] = useState<UserSession | null>(null);
+  const [tasks, setTasks] = useState<TaskDocument[]>([]);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [pendingCoordinates, setPendingCoordinates] = useState<TaskCoordinates | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  /* CONTROLLED reactivity - subscribe only to what you need */
+  useEffect(() => {
+    console.log('🎯 Dashboard: Setting up subscriptions');
+    
+    /* Only react to user session changes */
+    when(authStoreRx.userSession$, (session) => {
+      console.log('📡 Dashboard: userSession changed', session?.userId || 'null');
+      setUserSession(session);
+    });
+    
+    /* Only react to tasks changes */
+    when(taskStoreRx.tasks$, (taskList) => {
+      console.log('📡 Dashboard: tasks changed', taskList.length);
+      setTasks(taskList);
+    });
+  }, []); // Empty deps - stable subscriptions
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
 
-  const handleFloorPlanClick = (coordinates: TaskCoordinates) => {
+  const handleFloorPlanClick = useCallback((coordinates: TaskCoordinates) => {
     setPendingCoordinates(coordinates);
     setTaskModalOpen(true);
-  };
+  }, []);
 
   const handleTaskCreate = async (title: string, coordinates: TaskCoordinates) => {
     if (!userSession) return;
@@ -36,11 +59,13 @@ const Dashboard: React.FC = () => {
     setTaskModalOpen(true);
   };
 
+  /* Initialize tasks when user session is available */
   useEffect(() => {
     if (userSession) {
-      loadAllTasks(userSession);
+      console.log('🚀 Dashboard: Loading tasks for user session');
+      useTaskStore.getState().loadAllTasks(userSession);
     }
-  }, [userSession, loadAllTasks]);
+  }, [userSession]); // React to user session changes
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
