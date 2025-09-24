@@ -33,9 +33,9 @@ High-level:
         - Coodinates (x,y) on the plan
         - A title
         - Checklist
-            - A default checklist will be shown for each new task
+            - A default checklist will be shown for each new task. This checklist is a hard-coded checklist template which is shipped with the app as a JSON file. User cannot edit the checklist name.
             - Users will be able to edit, delete and add new checklist items+
-            - Each checklist item can be "checked oof", with the following statuses:
+            - Each checklist item can transition between the following statuses:
                 - No started
                 - In progress
                 - Blocked
@@ -44,7 +44,8 @@ High-level:
             - Design:
                 - Structure: 
                   - Task name: heading in bold font
-                  - `Checklist` collapsible section with heading in smaller bold font
+                  - `Checklist` collapsible section with heading in smaller bold font. Section is expanded by default.
+                    - Checklist name as a heading in bold font within the collapsible section. Checklist name is to be taken from a hard-coded checklist template which is shipped with the app as a JSON file. User cannot edit the checklist name. Caption "STEPS N" is to be shown next to the checklist name, where N is the number of subtask items in the checklist.
                     - Checklist consists of a subtask items and a "+ Add new item" button at the bottom, which consists of "+" icon and "Add new item" text 
                     - Subtask item consists of:
                       - SVG-rendered action-button playing the role of checkbox with multiple states, visually aligned in same 1st column with the "+" icon of the "Add new item" button
