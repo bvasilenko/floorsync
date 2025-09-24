@@ -7,20 +7,82 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories
 node_modules
+jspm_packages/
+
+# Build outputs
 dist
 dist-ssr
+build
+out
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Cache directories
+.npm
+.eslintcache
+.stylelintcache
+.vite
+.cache
+.parcel-cache
+
+# Runtime/temporary files
 *.local
+.tmp
+.temp
+
+# Testing
+coverage
+.nyc_output
+*.lcov
+
+# Database files (RxDB/IndexedDB related)
+*.db
+*.sqlite
+*.sqlite3
+.rxdb
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.tmp
+
+# Project-specific: Keep important documentation
+# .github - REMOVED from ignore (contains project instructions and issues)
+# docs/ - REMOVED from ignore (contains architecture documentation)
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
 
 .github
