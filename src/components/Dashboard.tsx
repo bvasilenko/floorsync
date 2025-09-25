@@ -1,17 +1,18 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import FloorPlanView from './FloorPlanView';
 import TaskCreationModal from './TaskCreationModal';
 import { authStore } from '../stores/authStore';
 import { taskStore } from '../stores/taskStore';
+import { useDashboardStore } from '../stores/ui/dashboardStore';
 import { useReactiveComponent } from '../hooks/useReactiveComponent';
-import type { TaskCoordinates, TaskDocument, UserSession } from '../types';
+import type { TaskCoordinates, TaskDocument } from '../types';
 
 // SVG Icon Components
 const ChecklistStatusCheckbox: React.FC<{
   status: TaskDocument['checklist'][0]['status'];
-  onClick: () => void;
+  onClick: (e: React.MouseEvent) => void;
 }> = ({ status, onClick }) => {
   const getCheckboxVariant = () => {
     switch (status) {
@@ -124,24 +125,47 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { when } = useReactiveComponent();
 
-  const [userSession, setUserSession] = useState<UserSession | null>(null);
-  const [tasks, setTasks] = useState<TaskDocument[]>([]);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [taskModalOpen, setTaskModalOpen] = useState(false);
-  const [pendingCoordinates, setPendingCoordinates] = useState<TaskCoordinates | null>(null);
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const [collapsedChecklists, setCollapsedChecklists] = useState<Set<string>>(new Set());
+  // Dashboard state from Zustand store (drop-in replacement for local useState)
+  const {
+    userSession, setUserSession,
+    tasks, setTasks,
+    userMenuOpen, setUserMenuOpen,
+    taskModalOpen, setTaskModalOpen,
+    pendingCoordinates, setPendingCoordinates,
+    expandedTaskId, setExpandedTaskId
+  } = useDashboardStore();
+  
+  console.log('!!! Dashboard > expandedTaskId from DashboardStore:', expandedTaskId);
+  
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     when(authStore.userSession$, session => {
+      console.log('!!! Dashboard.when(userSession$) > session changed:', session?.userId);
       setUserSession(session);
     });
 
     when(taskStore.tasks$, taskList => {
-      setTasks(taskList as TaskDocument[]);
+      console.log('!!! Dashboard.when(tasks$) > tasks changed, count:', taskList.length);
+      console.log('!!! Dashboard.when(tasks$) > task userIds:', taskList.map(t => t.userId));
+      
+      // CRITICAL: Prevent infinite loop by comparing task array references
+      setTasks(prevTasks => {
+        console.log('!!! Dashboard.when(tasks$) > Comparing arrays. Prev:', prevTasks.length, 'New:', taskList.length);
+        
+        // Only skip if EXACT same task IDs in SAME order
+        if (prevTasks.length === taskList.length && 
+            prevTasks.every((prev, i) => prev.id === taskList[i]?.id &&
+                                       prev.updatedAt === taskList[i]?.updatedAt)) {
+          console.log('!!! Dashboard.when(tasks$) > SKIPPING identical task update (same IDs + timestamps)');
+          return prevTasks; // Same tasks, prevent re-render
+        }
+        console.log('!!! Dashboard.when(tasks$) > APPLYING new task list - tasks changed');
+        console.log('!!! Dashboard.when(tasks$) > New task IDs:', taskList.map(t => t.id));
+        return taskList as TaskDocument[];
+      });
     });
-  });
+  }, [when, setUserSession, setTasks]);
 
   const handleLogout = async () => {
     await authStore.logout();
@@ -170,7 +194,11 @@ const Dashboard: React.FC = () => {
       itemId: string,
       currentStatus: TaskDocument['checklist'][0]['status']
     ) => {
-      if (!userSession) return;
+      console.log('!!! Dashboard.handleChecklistStatusToggle > STARTING. TaskID:', taskId, 'ItemID:', itemId, 'CurrentStatus:', currentStatus);
+      if (!userSession) {
+        console.log('!!! Dashboard.handleChecklistStatusToggle > ERROR: No user session');
+        return;
+      }
 
       // Cycle through statuses: not_started -> in_progress -> done -> not_started
       const statusCycle: TaskDocument['checklist'][0]['status'][] = [
@@ -181,7 +209,9 @@ const Dashboard: React.FC = () => {
       const currentIndex = statusCycle.indexOf(currentStatus);
       const nextStatus = statusCycle[(currentIndex + 1) % statusCycle.length];
 
+      console.log('!!! Dashboard.handleChecklistStatusToggle > CALLING taskStore.updateChecklistItemStatus. NextStatus:', nextStatus);
       await taskStore.updateChecklistItemStatus(taskId, itemId, nextStatus, userSession);
+      console.log('!!! Dashboard.handleChecklistStatusToggle > COMPLETED taskStore.updateChecklistItemStatus');
     },
     [userSession]
   );
@@ -196,10 +226,18 @@ const Dashboard: React.FC = () => {
 
   const handleAddChecklistItem = useCallback(
     async (taskId: string) => {
-      if (!userSession) return;
+      console.log('!!! Dashboard.handleAddChecklistItem > STARTING. TaskID:', taskId);
+      if (!userSession) {
+        console.log('!!! Dashboard.handleAddChecklistItem > ERROR: No user session');
+        return;
+      }
       const newItemText = prompt('Enter new checklist item:');
       if (newItemText?.trim()) {
+        console.log('!!! Dashboard.handleAddChecklistItem > CALLING taskStore.addChecklistItem. Text:', newItemText.trim());
         await taskStore.addChecklistItem(taskId, newItemText.trim(), userSession);
+        console.log('!!! Dashboard.handleAddChecklistItem > COMPLETED taskStore.addChecklistItem');
+      } else {
+        console.log('!!! Dashboard.handleAddChecklistItem > CANCELLED or empty text');
       }
     },
     [userSession]
@@ -216,21 +254,11 @@ const Dashboard: React.FC = () => {
     [userSession]
   );
 
-  const toggleChecklistCollapse = useCallback((taskId: string) => {
-    setCollapsedChecklists(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(taskId)) {
-        newSet.delete(taskId);
-      } else {
-        newSet.add(taskId);
-      }
-      return newSet;
-    });
-  }, []);
-
   /* Initialize tasks when user session is available */
   useEffect(() => {
+    console.log('!!! Dashboard.useEffect > userSession changed:', userSession?.userId);
     if (userSession) {
+      console.log('!!! Dashboard.useEffect > calling taskStore.loadAllTasks for user:', userSession.userId);
       taskStore.loadAllTasks(userSession);
     }
   }, [userSession]);
@@ -393,7 +421,10 @@ const Dashboard: React.FC = () => {
                     <div
                       key={task.id}
                       className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer"
-                      onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                      onClick={() => {
+                        console.log('!!! Dashboard > Clicking to toggle expansion. Current:', expandedTaskId, 'Task:', task.id);
+                        setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
+                      }}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -429,16 +460,13 @@ const Dashboard: React.FC = () => {
 
                       {/* Inline Task Editor - Expanded State */}
                       {expandedTaskId === task.id && (
-                        <div className="mt-4 border-t border-gray-200 pt-4">
-                          {/* Collapsible Checklist Section */}
+                                                <div className="mt-4 border-t border-gray-200 pt-4">
+                          {/* Static Checklist Section */}
                           <div className="mb-4">
                             <div className="flex items-center justify-between mb-2">
-                              <button
-                                onClick={() => toggleChecklistCollapse(task.id)}
-                                className="flex items-center space-x-2 font-semibold text-gray-900 hover:text-indigo-600 transition-colors"
-                              >
+                              <div className="flex items-center space-x-2 font-semibold text-gray-900">
                                 <svg
-                                  className={`w-4 h-4 transition-transform ${collapsedChecklists.has(task.id) ? 'rotate-0' : 'rotate-90'}`}
+                                  className="w-4 h-4 rotate-90"
                                   fill="none"
                                   stroke="currentColor"
                                   viewBox="0 0 24 24"
@@ -451,99 +479,101 @@ const Dashboard: React.FC = () => {
                                   />
                                 </svg>
                                 <span>Checklist</span>
-                              </button>
+                              </div>
                               <span className="text-sm text-gray-500">
                                 STEPS {task.checklist.length}
                               </span>
                             </div>
 
-                            {/* Collapsible Content */}
-                            {!collapsedChecklists.has(task.id) && (
-                              <div className="animate-in slide-in-from-top-2 duration-200">
-                                <h5 className="font-semibold text-gray-800 mb-3">
-                                  {task.checklistName}
-                                </h5>
+                            {/* Always Visible Content */}
+                            <div>
+                              <h5 className="font-semibold text-gray-800 mb-3">
+                                {task.checklistName}
+                              </h5>
 
-                                {/* Checklist Items */}
-                                <div className="space-y-2">
-                                  {task.checklist.map(item => (
-                                    <div key={item.id} className="flex items-start space-x-3">
-                                      {/* SVG Checkbox */}
-                                      <div className="flex-shrink-0 mt-0.5">
-                                        <ChecklistStatusCheckbox
-                                          status={item.status}
-                                          onClick={() =>
-                                            handleChecklistStatusToggle(
-                                              task.id,
-                                              item.id,
-                                              item.status
-                                            )
-                                          }
-                                        />
-                                      </div>
+                              {/* Checklist Items */}
+                              <div className="space-y-2">
+                                {task.checklist.map(item => (
+                                  <div key={item.id} className="flex items-start space-x-3">
+                                    {/* SVG Checkbox */}
+                                    <div className="flex-shrink-0 mt-0.5">
+                                      <ChecklistStatusCheckbox
+                                        status={item.status}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleChecklistStatusToggle(
+                                            task.id,
+                                            item.id,
+                                            item.status
+                                          );
+                                        }}
+                                      />
+                                    </div>
 
-                                      {/* Item Content */}
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-sm text-gray-900">{item.text}</div>
-                                        <div className="flex items-center mt-1">
-                                          <ChecklistStatusIndicator status={item.status} />
-                                          <span className="text-xs text-gray-500 capitalize">
-                                            {item.status.replace('_', ' ')}
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      {/* Edit/Delete Icons */}
-                                      <div className="flex-shrink-0 flex items-center space-x-1">
-                                        <button
-                                          className="p-1 text-gray-400 hover:text-gray-600"
-                                          onClick={e => {
-                                            e.stopPropagation();
-                                            handleUpdateChecklistItemText(
-                                              task.id,
-                                              item.id,
-                                              item.text
-                                            );
-                                          }}
-                                        >
-                                          <PencilIcon />
-                                        </button>
-                                        <button
-                                          className="p-1 text-gray-400 hover:text-red-600"
-                                          onClick={e => {
-                                            e.stopPropagation();
-                                            handleDeleteChecklistItem(task.id, item.id);
-                                          }}
-                                        >
-                                          <TrashIcon />
-                                        </button>
+                                    {/* Item Content */}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm text-gray-900">{item.text}</div>
+                                      <div className="flex items-center mt-1">
+                                        <ChecklistStatusIndicator status={item.status} />
+                                        <span className="text-xs text-gray-500 capitalize">
+                                          {item.status.replace('_', ' ')}
+                                        </span>
                                       </div>
                                     </div>
-                                  ))}
 
-                                  {/* Add New Item Button */}
-                                  <button
-                                    className="flex items-center space-x-2 text-sm text-indigo-600 hover:text-indigo-800"
-                                    onClick={() => handleAddChecklistItem(task.id)}
+                                    {/* Edit/Delete Icons */}
+                                    <div className="flex-shrink-0 flex items-center space-x-1">
+                                      <button
+                                        className="p-1 text-gray-400 hover:text-gray-600"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          handleUpdateChecklistItemText(
+                                            task.id,
+                                            item.id,
+                                            item.text
+                                          );
+                                        }}
+                                      >
+                                        <PencilIcon />
+                                      </button>
+                                      <button
+                                        className="p-1 text-gray-400 hover:text-red-600"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          handleDeleteChecklistItem(task.id, item.id);
+                                        }}
+                                      >
+                                        <TrashIcon />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+
+                                {/* Add New Item Button */}
+                                <button
+                                  className="flex items-center space-x-2 text-sm text-indigo-600 hover:text-indigo-800"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddChecklistItem(task.id);
+                                  }}
+                                >
+                                  <svg
+                                    className="w-4 h-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
                                   >
-                                    <svg
-                                      className="w-4 h-4"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M12 4v16m8-8H4"
-                                      />
-                                    </svg>
-                                    <span>Add new item</span>
-                                  </button>
-                                </div>
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M12 4v16m8-8H4"
+                                    />
+                                  </svg>
+                                  <span>Add new item</span>
+                                </button>
                               </div>
-                            )}
+                            </div>
                           </div>
                         </div>
                       )}

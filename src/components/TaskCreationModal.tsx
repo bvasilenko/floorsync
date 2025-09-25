@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { TaskCoordinates } from '../types';
+import { useTaskCreationModalStore } from '../stores/ui/taskCreationModalStore';
 
 interface TaskCreationModalProps {
   isOpen: boolean;
@@ -14,8 +15,7 @@ const TaskCreationModal: React.FC<TaskCreationModalProps> = ({
   onClose,
   onSubmit,
 }) => {
-  const [title, setTitle] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { title, setTitle, isSubmitting, setIsSubmitting } = useTaskCreationModalStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

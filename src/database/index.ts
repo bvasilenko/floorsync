@@ -1,6 +1,7 @@
 import { createRxDatabase, addRxPlugin } from 'rxdb';
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
 import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode';
+import { RxDBUpdatePlugin } from 'rxdb/plugins/update';
 import { wrappedValidateAjvStorage } from 'rxdb/plugins/validate-ajv';
 import type { RxJsonSchema, RxDatabase } from 'rxdb';
 
@@ -10,6 +11,9 @@ import type { TaskDocument } from '../types';
 if (import.meta.env.DEV) {
   addRxPlugin(RxDBDevModePlugin);
 }
+
+/* Add update plugin for document.update() method */
+addRxPlugin(RxDBUpdatePlugin);
 
 /* Task schema for RxDB collection */
 export const TaskSchema: RxJsonSchema<TaskDocument> = {

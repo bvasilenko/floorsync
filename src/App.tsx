@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import Login from './components/Login';
@@ -6,14 +6,12 @@ import Dashboard from './components/Dashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
 import { authStore } from './stores/authStore';
+import { useAppStore } from './stores/ui/appStore';
 import { useReactiveComponent } from './hooks/useReactiveComponent';
-import type { UserSession } from './types';
 
 function App() {
   const { when } = useReactiveComponent();
-
-  const [userSession, setUserSession] = useState<UserSession | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const { userSession, setUserSession, isLoading, setIsLoading } = useAppStore();
 
   useEffect(() => {
     when(authStore.userSession$, session => {
@@ -25,7 +23,7 @@ function App() {
     });
 
     authStore.restoreSession();
-  }, [when]);
+  }, [when, setUserSession, setIsLoading]);
 
   const shouldShowLoading = () => {
     return authStore.isLoading || isLoading;

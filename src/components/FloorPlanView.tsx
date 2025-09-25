@@ -1,11 +1,12 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import * as PIXI from 'pixi.js';
 
 import { taskStore } from '../stores/taskStore';
 import { authStore } from '../stores/authStore';
+import { useFloorPlanViewStore } from '../stores/ui/floorPlanViewStore';
 import { useReactiveComponent } from '../hooks/useReactiveComponent';
 import { FLOOR_PLAN_CONSTANTS } from '../constants';
-import type { TaskDocument, TaskCoordinates, UserSession } from '../types';
+import type { TaskDocument, TaskCoordinates } from '../types';
 import { throttle } from '../utils/async';
 
 interface FloorPlanViewProps {
@@ -326,10 +327,12 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
     handleResize: () => void;
   } | null>(null);
 
-  const [tasks, setTasks] = useState<TaskDocument[]>([]);
-  const [tasksNeedingRepaint, setTasksNeedingRepaint] = useState<Set<string>>(new Set());
-  const [userSession, setUserSession] = useState<UserSession | null>(null);
-  const [engineReady, setEngineReady] = useState<boolean>(false);
+  const { 
+    tasks, setTasks,
+    tasksNeedingRepaint, setTasksNeedingRepaint,
+    userSession, setUserSession,
+    engineReady, setEngineReady
+  } = useFloorPlanViewStore();
 
   const clearRepaintMarkers = taskStore.clearRepaintMarkers.bind(taskStore);
 
@@ -345,7 +348,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
     when(taskStore.tasksNeedingRepaint$, repaintSet => {
       setTasksNeedingRepaint(repaintSet as Set<string>);
     });
-  });
+  }, [when, setUserSession, setTasks, setTasksNeedingRepaint]);
 
   /* Stable callback to prevent re-initialization cycles */
   const stableOnTaskCreate = useCallback(
@@ -442,15 +445,15 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
 
   /* Reactive stream subscription - combines PixiJS init complete + RxDB task stream */
   useEffect(() => {
+    console.log('!!! FloorPlanView.useEffect > userSession:', userSession?.userId, 'engineReady:', engineReady, 'tasks.length:', tasks.length);
     if (!userSession || !engineReady || !engineRef.current?.renderer) {
       return;
     }
 
     const renderer = engineRef.current.renderer;
 
-    if (tasks && tasks.length > 0) {
-      renderer.renderAllMarkers(tasks);
-    }
+    console.log('!!! FloorPlanView.useEffect > calling renderAllMarkers with', tasks.length, 'tasks');
+    renderer.renderAllMarkers(tasks);
   }, [engineReady, userSession, tasks]);
 
   useEffect(() => {

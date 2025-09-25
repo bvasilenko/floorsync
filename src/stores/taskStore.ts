@@ -1,4 +1,3 @@
-import { create } from 'zustand';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { getCurrentUserId } from '../utils/session';
 import { DEFAULT_CHECKLIST } from '../constants';
@@ -83,28 +82,34 @@ interface InternalTaskStore {
 }
 
 class UnifiedTaskStore implements UnifiedTaskStoreInterface {
-  private zustandStore = create<InternalTaskStore>(() => ({
-    tasks: [],
-    tasksLoaded: false,
-    tasksNeedingRepaint: new Set(),
-    error: null,
-    isLoading: false,
-  }));
-
+  /* Private properties for RxDB integration */
+  
+  // BehaviorSubjects for caching and reactive state
   private tasksSubject = new BehaviorSubject<TaskDocument[]>([]);
   private tasksLoadedSubject = new BehaviorSubject<boolean>(false);
   private tasksNeedingRepaintSubject = new BehaviorSubject<Set<string>>(new Set());
+  private errorSubject = new BehaviorSubject<string | null>(null);
+  private isLoadingSubject = new BehaviorSubject<boolean>(false);
 
+  // Synchronous getters (cached from BehaviorSubjects)
   get tasks(): TaskDocument[] {
-    return this.zustandStore.getState().tasks;
+    return this.tasksSubject.value;
   }
 
   get tasksLoaded(): boolean {
-    return this.zustandStore.getState().tasksLoaded;
+    return this.tasksLoadedSubject.value;
   }
 
   get tasksNeedingRepaint(): Set<string> {
-    return this.zustandStore.getState().tasksNeedingRepaint;
+    return this.tasksNeedingRepaintSubject.value;
+  }
+
+  get error(): string | null {
+    return this.errorSubject.value;
+  }
+
+  get isLoading(): boolean {
+    return this.isLoadingSubject.value;
   }
 
   get tasks$(): Observable<TaskDocument[]> {
@@ -120,7 +125,7 @@ class UnifiedTaskStore implements UnifiedTaskStoreInterface {
   }
 
   private setState(partial: Partial<InternalTaskStore>): void {
-    this.zustandStore.setState(partial);
+    // Update BehaviorSubjects directly instead of Zustand
 
     if (typeof partial.tasks !== 'undefined') {
       this.tasksSubject.next(partial.tasks);
@@ -134,16 +139,31 @@ class UnifiedTaskStore implements UnifiedTaskStoreInterface {
   }
 
   async loadAllTasks(userSession: UserSession): Promise<void> {
+    console.log('!!! taskStore.loadAllTasks > starting reactive setup for user:', userSession?.userId);
     if (!userSession) return;
 
-    const allTasks = await userSession.database.tasks.find().exec();
-    const tasksArray = allTasks.map(
-      (doc: RxDocument<TaskDocument>) => doc.toJSON() as TaskDocument
-    );
+    // Set up reactive query instead of one-time load
+    this.setupReactiveTasksQuery(userSession);
+  }
 
-    this.setState({
-      tasks: tasksArray,
-      tasksLoaded: true,
+  private setupReactiveTasksQuery(userSession: UserSession): void {
+    console.log('!!! setupReactiveTasksQuery > establishing RxDB reactive subscription');
+    
+    // Create reactive query that automatically updates
+    const query = userSession.database.tasks.find();
+    
+    // Subscribe to reactive query results
+    query.$.subscribe((tasksCollection: RxDocument<TaskDocument>[]) => {
+      console.log('!!! RxDB reactive update > received', tasksCollection.length, 'tasks');
+      
+      const tasksArray = tasksCollection.map(doc => doc.toJSON() as TaskDocument);
+      console.log('!!! RxDB reactive update > task userIds:', tasksArray.map(t => t.userId));
+
+      // Update BehaviorSubjects directly
+      this.tasksSubject.next(tasksArray);
+      this.tasksLoadedSubject.next(true);
+      
+      console.log('!!! RxDB reactive update > BehaviorSubjects updated, tasks.length:', tasksArray.length);
     });
   }
 
@@ -151,18 +171,21 @@ class UnifiedTaskStore implements UnifiedTaskStoreInterface {
     taskData: { title: string; coordinates: { x: number; y: number } },
     userSession: UserSession
   ): Promise<void> {
+    console.log('!!! taskStore.createTask > creating task for user:', userSession?.userId);
     if (!userSession) return;
 
     const taskWithTemplate = createTaskWithTemplate(taskData);
+    console.log('!!! taskStore.createTask > new task userId:', taskWithTemplate.userId);
+    console.log('!!! taskStore.createTask > current user:', userSession.userId);
+    
+    // Insert into RxDB - reactive query will automatically update state
     await userSession.database.tasks.insert(taskWithTemplate);
 
-    const newTasks = [...this.tasks, taskWithTemplate];
+    // Only update repaint set manually (this is UI state, not data state)
     const newRepaintSet = new Set([...this.tasksNeedingRepaint, taskWithTemplate.id]);
+    this.tasksNeedingRepaintSubject.next(newRepaintSet);
 
-    this.setState({
-      tasks: newTasks,
-      tasksNeedingRepaint: newRepaintSet,
-    });
+    console.log('!!! taskStore.createTask > RxDB insert complete, reactive query will update tasks');
   }
 
   async updateTask(
@@ -171,81 +194,75 @@ class UnifiedTaskStore implements UnifiedTaskStoreInterface {
     userSession: UserSession
   ): Promise<void> {
     if (!userSession) {
-      this.setState({ error: 'No active user session' });
+      // Update error state directly via BehaviorSubject
+      this.errorSubject.next('No active user session');
       return;
     }
 
-    this.setState({ isLoading: true, error: null });
+    // Update loading state directly via BehaviorSubject
+    this.isLoadingSubject.next(true);
+    this.errorSubject.next(null);
 
     try {
       const task = await userSession.database.tasks.findOne(id).exec();
       if (!task) {
-        this.setState({
-          error: 'Task not found',
-          isLoading: false,
-        });
+        this.errorSubject.next('Task not found');
+        this.isLoadingSubject.next(false);
         return;
       }
 
-      await task.update({ ...updates, updatedAt: new Date().toISOString() });
-
-      const newTasks = this.tasks.map(t =>
-        t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
-      );
-      const newRepaintSet = new Set([...this.tasksNeedingRepaint, id]);
-
-      this.setState({
-        tasks: newTasks,
-        tasksNeedingRepaint: newRepaintSet,
-        isLoading: false,
+      // Update in RxDB - reactive query will automatically update state
+      await task.update({
+        $set: { ...updates, updatedAt: new Date().toISOString() }
       });
+
+      // Only update repaint set manually (UI state)
+      const newRepaintSet = new Set([...this.tasksNeedingRepaint, id]);
+      this.tasksNeedingRepaintSubject.next(newRepaintSet);
+      this.isLoadingSubject.next(false);
+      
+      console.log('!!! taskStore.updateTask > RxDB update complete, reactive query will update tasks');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to update task';
       console.error('taskStore.updateTask failed:', error);
 
-      this.setState({
-        error: errorMessage,
-        isLoading: false,
-      });
+      this.errorSubject.next(errorMessage);
+      this.isLoadingSubject.next(false);
     }
   }
 
   async deleteTask(id: string, userSession: UserSession): Promise<void> {
     if (!userSession) {
-      this.setState({ error: 'No active user session' });
+      this.errorSubject.next('No active user session');
       return;
     }
 
-    this.setState({ isLoading: true, error: null });
+    this.isLoadingSubject.next(true);
+    this.errorSubject.next(null);
 
     try {
       const task = await userSession.database.tasks.findOne(id).exec();
       if (!task) {
-        this.setState({
-          error: 'Task not found',
-          isLoading: false,
-        });
+        this.errorSubject.next('Task not found');
+        this.isLoadingSubject.next(false);
         return;
       }
 
+      // Remove from RxDB - reactive query will automatically update state
       await task.remove();
 
-      const newTasks = this.tasks.filter(t => t.id !== id);
+      // Only update repaint set manually (UI state)
       const newRepaintSet = new Set([...this.tasksNeedingRepaint, id]);
-
-      this.setState({
-        tasks: newTasks,
-        tasksNeedingRepaint: newRepaintSet,
-        isLoading: false,
-      });
+      this.tasksNeedingRepaintSubject.next(newRepaintSet);
+      this.isLoadingSubject.next(false);
+      
+      console.log('!!! taskStore.deleteTask > RxDB remove complete, reactive query will update tasks');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete task';
       console.error('taskStore.deleteTask failed:', error);
 
-      this.setState({
-        error: errorMessage,
-        isLoading: false,
-      });
+      this.errorSubject.next(errorMessage);
+      this.isLoadingSubject.next(false);
     }
   }
 
@@ -276,7 +293,9 @@ class UnifiedTaskStore implements UnifiedTaskStoreInterface {
         item.id === itemId ? { ...item, status: newStatus } : item
       );
 
-      await task.update({ checklist: updatedChecklist, updatedAt: new Date().toISOString() });
+      await task.update({
+        $set: { checklist: updatedChecklist, updatedAt: new Date().toISOString() }
+      });
 
       const newTasks = this.tasks.map(t =>
         t.id === taskId
@@ -334,8 +353,10 @@ class UnifiedTaskStore implements UnifiedTaskStoreInterface {
       };
 
       await task.update({
-        checklist: [...task.checklist, newItem],
-        updatedAt: new Date().toISOString(),
+        $set: {
+          checklist: [...task.checklist, newItem],
+          updatedAt: new Date().toISOString(),
+        }
       });
 
       const updatedChecklist = [...task.checklist, newItem];
@@ -389,8 +410,10 @@ class UnifiedTaskStore implements UnifiedTaskStoreInterface {
       );
 
       await task.update({
-        checklist: updatedChecklist,
-        updatedAt: new Date().toISOString(),
+        $set: {
+          checklist: updatedChecklist,
+          updatedAt: new Date().toISOString(),
+        }
       });
 
       const newTasks = this.tasks.map(t =>
@@ -445,8 +468,10 @@ class UnifiedTaskStore implements UnifiedTaskStoreInterface {
       );
 
       await task.update({
-        checklist: updatedChecklist,
-        updatedAt: new Date().toISOString(),
+        $set: {
+          checklist: updatedChecklist,
+          updatedAt: new Date().toISOString(),
+        }
       });
 
       const newTasks = this.tasks.map(t =>
@@ -482,11 +507,14 @@ class UnifiedTaskStore implements UnifiedTaskStoreInterface {
   }
 
   reset(): void {
+    console.log('!!! taskStore.reset > clearing all tasks and state');
+    console.log('!!! taskStore.reset > current tasks count:', this.tasks.length);
     this.setState({
       tasks: [],
       tasksLoaded: false,
       tasksNeedingRepaint: new Set(),
     });
+    console.log('!!! taskStore.reset > reset complete, tasks.length now:', this.tasks.length);
   }
 }
 

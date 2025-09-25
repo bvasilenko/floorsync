@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { authStore } from '../stores/authStore';
+import { useLoginStore } from '../stores/ui/loginStore';
 
 const Login: React.FC = () => {
-  const [name, setName] = useState('');
+  const { name, setName } = useLoginStore();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {

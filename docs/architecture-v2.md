@@ -1,132 +1,296 @@
-# RxDB DB+BLL ARCHITECTURE SUGGESTIONS
+# FloorSync MVVM Architecture Documentation v2
 
-Thinking
+## Dead Code Removal
 
-Read [](file:///Users/boris/proj/mvp/floorsync/src/stores/taskStore.ts)
+### **UNUSED UISTORE ELIMINATED**
 
-Now let me continue the evidence analysis by searching for more specific RxDB reactive patterns and examples: 
+**Investigation Results**: Evidence-based analysis revealed `/src/stores/uiStore.ts` was **completely unused**
+**Verification Process**: grep search across entire codebase - zero actual usage found
+**Action Taken**: Removed dead code after migrating `expandedTaskId` functionality to `dashboardStore.ts`
 
-Using "Fetch Web Page"
-
-Fetched https://rxdb.info/rx-query.html
-
-Perfect! This is exactly the evidence I was looking for. Let me analyze what I found from the RxDB documentation: 
-
-Thinking
-
-Using "Fetch Web Page"
-
-Fetched https://rxdb.info/examples.html
-
-Let me try the quickstart guide instead: 
-
-Using "Fetch Web Page"
-
-Fetched https://rxdb.info/quickstart.html
-
-**CRITICAL EVIDENCE FOUND!** The RxDB Quickstart guide shows EXACTLY what I was looking for in step 11: 
-
-Searched pubkey/rxdb for "React example reactive patterns query subscribe observable UI", 64 results
-
-**PERFECT! This is the strongest evidence yet.** The GitHub repository search has provided OVERWHELMING evidence that RxDB's intended usage pattern is **REACTIVE**, not imperative. Let me synthesize the key findings:
-
-## 🚨 **EVIDENCE-BASED VERDICT: WE ARE VIOLATING RxDB CONVENTIONS** 🚨
-
-### **CRITICAL EVIDENCE FROM RXDB OFFICIAL SOURCES:**
-
-#### **1. QUICKSTART GUIDE - OFFICIAL RECOMMENDATION:**
+**Migration Evidence**:
 ```typescript
-// RxDB Quickstart Step 11: "Observe a Query" 
-const observable = myDatabase.todos.find({
-    selector: { done: { $eq: false } }
-}).$ // ← THE $ RETURNS AN OBSERVABLE
-observable.subscribe(notDoneDocs => {
-    console.log('Currently have ' + notDoneDocs.length + ' things to do');
-    // -> here you would re-render your app to show the updated document list
-});
+// OLD (unused): /src/stores/uiStore.ts
+interface UIState {
+  expandedTaskId: string | null;
+  setExpandedTaskId: (id: string | null) => void;
+}
+
+// NEW (active): /src/stores/ui/dashboardStore.ts
+interface DashboardState {
+  expandedTaskId: string | null;  // ← Migrated here
+  setExpandedTaskId: (id: string | null) => void;
+  // ... + 7 other state properties specific to Dashboard
+}
 ```
 
-#### **2. REACT EXAMPLE FROM OFFICIAL REPO:**
+**Result**: Cleaner architecture without redundant code
+
+## RxDB Official Recommendations vs Current Implementation
+
+### Architecture Pattern: MVVM (Model-View-ViewModel)
+
+**VERIFIED IMPLEMENTATION:**
+
+#### Model Layer (RxDB)
+- **File**: `src/database/index.ts`
+- **Purpose**: Reactive database with offline-first capabilities
+- **Pattern**: RxDB provides reactive data streams via `.$.subscribe()`
+- **Evidence**: Direct RxDB reactive patterns without additional state management
+
+#### ViewModel Layer (Dual Implementation)
+**Data ViewModel: BehaviorSubject Caching Layer**
+- **Files**: `src/stores/taskStore.ts`, `src/stores/authStore.ts`
+- **Purpose**: Reactive caching layer between RxDB and React components
+- **Pattern**: BehaviorSubject provides immediate value access + reactive updates
+- **Evidence**: `setupReactiveTasksQuery()` creates RxDB subscription → BehaviorSubject emission
+
+**UI ViewModel: Page-Specific Zustand Stores**
+- **Files**: `src/stores/ui/*.ts` (Multiple page-specific stores)
+- **Purpose**: UI-specific state management organized by page/component
+- **Pattern**: Individual Zustand stores for each page/component
+- **Evidence**: Complete refactoring from single `uiStore` to dedicated stores
+
+#### View Layer (React)
+- **Files**: `src/components/*.tsx`
+- **Purpose**: Reactive UI components
+- **Pattern**: React hooks consuming ViewModel reactive streams + page-specific Zustand stores
+- **Evidence**: Components use BehaviorSubject subscriptions + dedicated Zustand stores
+
+## Store Directory Analysis (POST-REFACTORING REALITY)
+
+### CURRENT IMPLEMENTATION: PAGE-SPECIFIC ZUSTAND STORES
+
+**REFACTORING COMPLETED**: Moved from single `uiStore.ts` to page-specific stores
+
+**ACTUAL STORE IMPLEMENTATIONS:**
+
+#### taskStore.ts (BehaviorSubject - NOT Zustand)
+```typescript
+// Evidence: Uses BehaviorSubject, removed Zustand dependency
+const tasksSubject = new BehaviorSubject<Task[]>([]);
+const isLoadingSubject = new BehaviorSubject<boolean>(false);
+```
+
+#### authStore.ts (BehaviorSubject - NOT Zustand)
+```typescript  
+// Evidence: Uses BehaviorSubject for session management
+const userSessionSubject = new BehaviorSubject<UserSession | null>(null);
+const isLoadingSubject = new BehaviorSubject<boolean>(false);
+```
+
+#### Page-Specific Zustand Stores (NEW IMPLEMENTATION)
+```typescript
+// Evidence: Each page/component has dedicated Zustand store
+export const useDashboardStore = create<DashboardStore>(...);  // Dashboard state
+export const useLoginStore = create<LoginStore>(...);          // Login state  
+export const useAppStore = create<AppStore>(...);              // App-level state
+export const useFloorPlanViewStore = create<FloorPlanViewStore>(...); // FloorPlan state
+export const useTaskCreationModalStore = create<TaskCreationModalStore>(...); // Modal state
+```
+
+## Page-Specific Zustand Architecture
+
+### IMPLEMENTATION EVIDENCE
+
+**✅ COMPLETED REFACTORING:**
+1. **Dashboard**: `src/stores/ui/dashboardStore.ts`
+   - **State**: userSession, tasks, userMenuOpen, taskModalOpen, pendingCoordinates, expandedTaskId, collapsedChecklists
+   - **Actions**: setUserSession, setTasks, setUserMenuOpen, setTaskModalOpen, setPendingCoordinates, setExpandedTaskId, setCollapsedChecklists
+
+2. **Login**: `src/stores/ui/loginStore.ts`
+   - **State**: name
+   - **Actions**: setName
+
+3. **App**: `src/stores/ui/appStore.ts`
+   - **State**: userSession, isLoading
+   - **Actions**: setUserSession, setIsLoading
+
+4. **FloorPlanView**: `src/stores/ui/floorPlanViewStore.ts`
+   - **State**: tasks, tasksNeedingRepaint, userSession, engineReady
+   - **Actions**: setTasks, setTasksNeedingRepaint, setUserSession, setEngineReady
+
+5. **TaskCreationModal**: `src/stores/ui/taskCreationModalStore.ts`
+   - **State**: title, isSubmitting
+   - **Actions**: setTitle, setIsSubmitting
+
+### ARCHITECTURAL BENEFITS ACHIEVED
+
+**✅ SINGLE RESPONSIBILITY PRINCIPLE**: Each store handles one page/component
+**✅ MODULAR ORGANIZATION**: Clear separation of concerns by feature
+**✅ PERFORMANCE**: Components only re-render for relevant state changes  
+**✅ MAINTAINABILITY**: Easy to locate and modify page-specific state
+**✅ TESTABILITY**: Individual stores can be tested in isolation
+
+## Critical Bug Fixes Applied
+
+### **INFINITE LOOP BUG (FIXED)**
+
+**Problem Identified**: Missing dependency arrays in `useEffect` hooks caused infinite render loops
+**Root Cause**: Zustand store updates triggered React re-renders → `useEffect` without dependencies → reactive subscriptions → store updates → infinite cycle
+
+**Evidence from Browser Logs**:
+```
+!!! Dashboard > expandedTaskId from UIStore: null
+!!! Dashboard.when(userSession$) > session changed: A  
+!!! Dashboard.when(tasks$) > tasks changed, count: 0
+[...repeating hundreds of times...]
+```
+
+**Fix Applied**: Added proper dependency arrays to all `useEffect` hooks:
+```typescript
+// BEFORE (infinite loop):
+useEffect(() => {
+  when(authStore.userSession$, session => setUserSession(session));
+}); // ❌ Missing dependency array
+
+// AFTER (fixed):
+useEffect(() => {
+  when(authStore.userSession$, session => setUserSession(session));
+}, [when, setUserSession]); // ✅ Proper dependencies
+```
+
+**Files Fixed**:
+- `src/components/Dashboard.tsx`
+- `src/components/FloorPlanView.tsx` 
+- `src/App.tsx`
+
+### **Evidence from RxDB Official Documentation**
+
+**Source**: [RxDB Query Documentation](https://rxdb.info/rx-query.html#observe-)
+
+**Official Statement**: 
+> "An BehaviorSubject that always has the current result-set as value. This is extremely helpful when used together with UIs that should always show the same state as what is written in the database."
+
+**Key Finding**: `RxQuery.$` **already returns a BehaviorSubject**, making our additional BehaviorSubject layer redundant.
+
+### **Official RxDB React Pattern**
+
+**From RxDB documentation and official examples**:
 ```tsx
-// from examples/react - Official RxDB React Example
+// ✅ RxDB Recommended Pattern:
 function HeroList({ collection }) {
   const [heroes, setHeroes] = useState([]);
 
   useEffect(() => {
     const query = collection.find();
-    const subscription = query.$.subscribe(newHeroes => {  // ← REACTIVE PATTERN
-      setHeroes(newHeroes);
+    const subscription = query.$.subscribe(newHeroes => {  // Direct subscription
+      setHeroes(newHeroes.map(doc => doc.toJSON()));
     });
-    return () => subscription.unsubscribe();  // ← PROPER CLEANUP
+    return () => subscription.unsubscribe();  // Proper cleanup
   }, [collection]);
 
-  return (
-    <div>
-      {heroes.map(hero => <li key={hero.id}>{hero.name}</li>)}
-    </div>
-  );
+  return <div>{heroes.map(hero => <li key={hero.id}>{hero.name}</li>)}</div>;
 }
 ```
 
-#### **3. RxDB DOCUMENTATION EXPLICITLY STATES:**
-- **"This is extremely helpful when used together with UIs that should always show the same state as what is written in the database"**
-- **"Subscribe to data changes so that your UI is always up-to-date"**  
-- **"Observable queries simplify state management by eliminating the need to manually trigger updates"**
-
-#### **4. MULTIPLE FRAMEWORK EXAMPLES ALL USE REACTIVE PATTERN:**
-- **Vue.js**: `db.hero.find().$.subscribe(newHeroes => heroes.value = newHeroes)`
-- **Angular**: Uses signals with `query.$` pattern
-- **React**: Multiple examples showing `query.$.subscribe()` pattern
-- **Svelte**: Uses reactive stores with RxDB observables
-
-### **WHAT WE'RE DOING WRONG:**
+### **Our Current Pattern (Non-Recommended)**
 
 ```typescript
-// OUR CURRENT APPROACH (IMPERATIVE - VIOLATES CONVENTIONS):
-const allTasks = await userSession.database.tasks.find().exec();  // ← One-time fetch
-const tasksArray = allTasks.map(doc => doc.toJSON());
-this.setState({ tasks: tasksArray });  // ← Manual state management
-// ← We manually sync state after every database operation
-```
-
-### **WHAT RXDB EXPECTS (REACTIVE - FOLLOWS CONVENTIONS):**
-
-```typescript
-// RXDB INTENDED APPROACH (REACTIVE):
-const tasksQuery = userSession.database.tasks.find();
-tasksQuery.$.subscribe(newTasks => {  // ← Automatic updates
-  this.setState({ tasks: newTasks.map(doc => doc.toJSON()) });
+// ❌ Our Current Implementation:
+// Step 1: RxDB query.$ (already a BehaviorSubject)
+query.$.subscribe((tasksCollection) => {
+  // Step 2: Additional BehaviorSubject layer (redundant)
+  this.tasksSubject.next(tasksArray);
 });
-// ← RxDB automatically emits new results when data changes
+
+// Step 3: React subscribes to our BehaviorSubject
+when(taskStore.tasks$, tasks => setTasks(tasks));
 ```
 
-## **DEVELOPER SURPRISE FACTOR: HIGH**
+### **Architecture Violation Analysis**
 
-Any developer familiar with RxDB would expect:
-1. **Reactive queries** using `.$.subscribe()`  
-2. **Automatic UI synchronization** when data changes
-3. **EventReduce optimization** for cached queries
-4. **Cross-tab synchronization** automatically
+**Problem Identified**: 
+- **RxDB `query.$` already provides BehaviorSubject functionality**
+- **Our additional BehaviorSubject layer violates DRY principle**
+- **RxDB documentation shows direct `query.$` → React pattern**
+- **No official examples use intermediate BehaviorSubject layers**
 
-Instead, they'll find:
-1. **Imperative queries** using `.exec()`
-2. **Manual state synchronization** after every operation  
-3. **No automatic updates** when data changes
-4. **No cross-tab reactivity**
+### **Recommended Migration Path**
 
-## **CONCLUSION:**
+**From**: `RxDB → BehaviorSubject → React`  
+**To**: `RxDB → React` (as officially recommended)
 
-**YES, WE SIGNIFICANTLY BREAK RXDB CONVENTIONS.**
+```typescript
+// ✅ Corrected Implementation:
+useEffect(() => {
+  if (!userSession) return;
+  
+  const query = userSession.database.tasks.find();
+  const subscription = query.$.subscribe(newTasks => {
+    setTasks(newTasks.map(doc => doc.toJSON()));
+    setTasksLoaded(true);
+  });
+  
+  return () => subscription.unsubscribe();
+}, [userSession]);
+```
 
-We're essentially treating RxDB like a traditional database (fetch once, update manually) instead of leveraging its core reactive capabilities. This approach:
+**Benefits**:
+- ✅ Follows RxDB official conventions
+- ✅ Reduces code complexity (fewer layers)
+- ✅ Better performance (no intermediate caching)
+- ✅ Aligns with all official RxDB examples
+- ✅ Utilizes RxDB's built-in BehaviorSubject optimizations
 
-1. **Violates RxDB's intended usage pattern**
-2. **Misses key performance optimizations** (EventReduce algorithm)
-3. **Creates maintenance overhead** (manual state sync)
-4. **Loses cross-tab reactivity** 
-5. **Will surprise other developers** who expect reactive patterns
+### MVVM Pattern Advantages
 
-**RECOMMENDATION:** We should refactor to use RxDB's reactive patterns with `query.$.subscribe()` to align with established conventions and gain the intended benefits.
+1. **Separation of Concerns**: Clear boundaries between data, UI state, and presentation
+2. **Testability**: ViewModels can be tested independently of React components
+3. **Reactive Updates**: Automatic UI updates when underlying data changes
+4. **Offline-First**: RxDB provides robust offline capabilities with sync
 
-Now that the user has seen the evidence, they should have a clear understanding of whether we need to refactor our approach.
+### BehaviorSubject vs Zustand Separation
+
+**BehaviorSubject (Data Layer)**:
+- ✅ Immediate value access with `.getValue()`
+- ✅ Perfect bridge between RxDB reactive streams and React
+- ✅ Handles data caching and loading states
+- ✅ Automatic subscription management
+
+**Zustand (UI Layer)**:
+- ✅ Optimized for UI state management
+- ✅ Immutable updates with automatic React integration
+- ✅ DevTools support for debugging
+- ✅ Minimal boilerplate for UI concerns
+
+## Implementation Status
+
+### Completed ✅
+- [x] MVVM architecture with proper layer separation
+- [x] RxDB Model layer with reactive patterns
+- [x] BehaviorSubject ViewModel caching layer for data
+- [x] Zustand ViewModel for UI-specific state
+- [x] React View layer with reactive hooks
+
+### Architecture Issues Identified ⚠️
+- [x] README.md inaccuracy about store implementations
+- [x] uiStore violates Single Responsibility Principle
+- [x] Documentation gap for actual architecture
+- [x] **BehaviorSubject layer violates RxDB conventions** - RxDB officially recommends direct `query.$` subscription to React components
+
+### Recommended Improvements 📋
+- [ ] Split uiStore into domain-specific stores following Zustand best practices
+- [ ] Update README.md to reflect actual store implementations  
+- [ ] Add architecture diagrams showing MVVM flow
+- [ ] Document reactive data flow patterns
+- [ ] **Refactor to RxDB-recommended patterns**: Remove BehaviorSubject caching layer, use direct `query.$` subscription in React components
+
+## Conclusion
+
+**Current Architecture Status**: ✅ **FUNCTIONALLY SOUND**
+
+The MVVM implementation successfully separates concerns with:
+- RxDB handling reactive data persistence
+- BehaviorSubject providing data caching and bridging  
+- Zustand managing UI-specific state
+- React components consuming reactive streams
+
+**Key Improvements Needed**:
+1. **Zustand Store Organization**: Split uiStore following official modularity guidance
+2. **Documentation Accuracy**: Correct README.md store descriptions
+3. **SOLID Compliance**: Address Single Responsibility violations
+4. **⚠️ CRITICAL: RxDB Convention Compliance**: Remove redundant BehaviorSubject layer, implement direct `query.$` → React subscriptions as officially recommended
+
+The architecture foundation is solid and follows proper MVVM patterns. However, **the BehaviorSubject caching layer violates RxDB's official recommendations** and should be refactored to align with established RxDB patterns. Other identified improvements are organizational rather than structural.
 
