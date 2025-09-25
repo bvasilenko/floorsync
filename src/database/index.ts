@@ -1,9 +1,9 @@
-import { createRxDatabase } from 'rxdb';
+import { createRxDatabase, addRxPlugin } from 'rxdb';
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
-import { addRxPlugin } from 'rxdb';
 import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode';
 import { wrappedValidateAjvStorage } from 'rxdb/plugins/validate-ajv';
 import type { RxJsonSchema, RxDatabase } from 'rxdb';
+
 import type { TaskDocument } from '../types';
 
 /* Add dev-mode plugin for detailed error messages in development */
@@ -19,28 +19,28 @@ export const TaskSchema: RxJsonSchema<TaskDocument> = {
   properties: {
     id: {
       type: 'string',
-      maxLength: 100
+      maxLength: 100,
     },
     userId: {
       type: 'string',
-      maxLength: 100
+      maxLength: 100,
     },
     title: {
       type: 'string',
-      maxLength: 200
+      maxLength: 200,
     },
     coordinates: {
       type: 'object',
       properties: {
         x: { type: 'number' },
-        y: { type: 'number' }
+        y: { type: 'number' },
       },
       required: ['x', 'y'],
-      additionalProperties: false
+      additionalProperties: false,
     },
     checklistName: {
       type: 'string',
-      maxLength: 100
+      maxLength: 100,
     },
     checklist: {
       type: 'array',
@@ -51,67 +51,77 @@ export const TaskSchema: RxJsonSchema<TaskDocument> = {
           text: { type: 'string' },
           status: {
             type: 'string',
-            enum: ['not_started', 'in_progress', 'blocked', 'final_check_awaiting', 'done']
+            enum: ['not_started', 'in_progress', 'blocked', 'final_check_awaiting', 'done'],
           },
           order: { type: 'number' },
-          createdAt: { type: 'string', format: 'date-time' }
+          createdAt: { type: 'string', format: 'date-time' },
         },
         required: ['id', 'text', 'status', 'order', 'createdAt'],
-        additionalProperties: false
-      }
+        additionalProperties: false,
+      },
     },
     version: {
-      type: 'number'
+      type: 'number',
     },
     createdAt: {
       type: 'string',
-      format: 'date-time'
+      format: 'date-time',
     },
     updatedAt: {
       type: 'string',
-      format: 'date-time'
-    }
+      format: 'date-time',
+    },
   },
-  required: ['id', 'userId', 'title', 'coordinates', 'checklistName', 'checklist', 'version', 'createdAt', 'updatedAt'],
-  indexes: ['userId']
+  required: [
+    'id',
+    'userId',
+    'title',
+    'coordinates',
+    'checklistName',
+    'checklist',
+    'version',
+    'createdAt',
+    'updatedAt',
+  ],
+  indexes: ['userId'],
 };
 
 /* Internal helper - create and initialize database */
 const createAndInitializeDatabase = async (dbName: string): Promise<RxDatabase> => {
   /* Use AJV validator in dev mode */
-  const storage = import.meta.env.DEV 
+  const storage = import.meta.env.DEV
     ? wrappedValidateAjvStorage({ storage: getRxStorageDexie() })
     : getRxStorageDexie();
-    
+
   const database = await createRxDatabase({
     name: dbName,
     storage,
     eventReduce: true,
-    ignoreDuplicate: true
+    ignoreDuplicate: true,
   });
-  
+
   /* Add tasks collection with schema */
   await database.addCollections({
     tasks: {
-      schema: TaskSchema
-    }
+      schema: TaskSchema,
+    },
   });
-  
+
   return database;
 };
 
 /* Database-per-user pattern - complete physical separation */
 export const createUserDatabase = async (userId: string): Promise<RxDatabase> => {
   const dbName = `floorsync_${userId}`;
-  
+
   try {
     return await createAndInitializeDatabase(dbName);
-  } catch (error) {    
+  } catch (error) {
     /* Handle duplicate database error with single retry */
     if (error instanceof Error && error.message.includes('DB8')) {
       return await createAndInitializeDatabase(dbName);
     }
-    
+
     throw error;
   }
 };
