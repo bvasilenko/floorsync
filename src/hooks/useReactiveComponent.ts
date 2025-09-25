@@ -25,7 +25,7 @@ class UnsubscriberFactory {
 export const useReactiveComponent = () => {
   const unsubscriberRef = useRef<Unsubscriber | null>(null);
   const unsubscriberFactoryRef = useRef(new UnsubscriberFactory());
-  
+
   /* Force re-render capability similar to Angular's detectChanges */
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
 

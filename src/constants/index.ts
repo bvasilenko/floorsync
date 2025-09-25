@@ -1,14 +1,14 @@
 /* Default checklist template */
 export const DEFAULT_CHECKLIST = {
-  name: "Standard Construction Task",
+  name: 'Standard Construction Task',
   defaultItems: [
-    { text: "Review specifications", order: 1 },
-    { text: "Prepare materials", order: 2 },
-    { text: "Set up work area", order: 3 },
-    { text: "Execute task", order: 4 },
-    { text: "Quality check", order: 5 },
-    { text: "Clean up", order: 6 }
-  ]
+    { text: 'Review specifications', order: 1 },
+    { text: 'Prepare materials', order: 2 },
+    { text: 'Set up work area', order: 3 },
+    { text: 'Execute task', order: 4 },
+    { text: 'Quality check', order: 5 },
+    { text: 'Clean up', order: 6 },
+  ],
 } as const;
 
 /* FloorPlan rendering constants */
@@ -25,6 +25,6 @@ export const FLOOR_PLAN_CONSTANTS = {
     in_progress: 0xf59e0b, // yellow
     blocked: 0xef4444, // red
     final_check_awaiting: 0x3b82f6, // blue
-    not_started: 0x6b7280 // gray
-  }
+    not_started: 0x6b7280, // gray
+  },
 } as const;

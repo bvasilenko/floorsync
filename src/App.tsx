@@ -11,7 +11,7 @@ import type { UserSession } from './types';
 
 function App() {
   const { when } = useReactiveComponent();
-  
+
   /* Component state - ONLY updates when observables emit */
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -19,19 +19,19 @@ function App() {
   /* CONTROLLED reactivity - subscribe only to what you need */
   useEffect(() => {
     console.log('🎯 App: Setting up subscriptions');
-    
+
     /* Only react to user session changes - SOLID DRY KISS decoupling */
-    when(authStoreRx.userSession$, (session) => {
+    when(authStoreRx.userSession$, session => {
       console.log('📡 App: userSession changed', session?.userId || 'null');
       setUserSession(session);
     });
-    
+
     /* Only react to loading state changes */
-    when(authStoreRx.isLoading$, (loading) => {
+    when(authStoreRx.isLoading$, loading => {
       console.log('📡 App: isLoading changed', loading);
       setIsLoading(loading);
     });
-    
+
     /* Initialize app - direct action call, no subscription needed */
     console.log('🚀 App: Calling restoreSession');
     useAuthStore.getState().restoreSession();
@@ -57,19 +57,26 @@ function App() {
     <BrowserRouter>
       <div className="min-h-screen bg-gray-50">
         <Routes>
-          <Route path="/login" element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          } />
-          <Route path="/dashboard" element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/" element={
-            <Navigate to={userSession ? "/dashboard" : "/login"} replace />
-          } />
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <Login />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/"
+            element={<Navigate to={userSession ? '/dashboard' : '/login'} replace />}
+          />
         </Routes>
       </div>
     </BrowserRouter>

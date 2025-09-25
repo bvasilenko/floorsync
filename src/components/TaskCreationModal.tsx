@@ -12,20 +12,20 @@ const TaskCreationModal: React.FC<TaskCreationModalProps> = ({
   isOpen,
   coordinates,
   onClose,
-  onSubmit
+  onSubmit,
 }) => {
   const [title, setTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!title.trim() || !coordinates) {
       return;
     }
 
     setIsSubmitting(true);
-    
+
     try {
       await onSubmit(title.trim(), coordinates);
       setTitle('');
@@ -53,7 +53,7 @@ const TaskCreationModal: React.FC<TaskCreationModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-transparent flex items-center justify-center z-50"
       onClick={handleOverlayClick}
     >
@@ -66,7 +66,12 @@ const TaskCreationModal: React.FC<TaskCreationModalProps> = ({
             className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -75,10 +80,22 @@ const TaskCreationModal: React.FC<TaskCreationModalProps> = ({
           <div className="mb-4 p-3 bg-gray-50 rounded-lg">
             <div className="flex items-center text-sm text-gray-600">
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                />
               </svg>
-              <span>Position: ({(coordinates.x * 100).toFixed(1)}%, {(coordinates.y * 100).toFixed(1)}%)</span>
+              <span>
+                Position: ({(coordinates.x * 100).toFixed(1)}%, {(coordinates.y * 100).toFixed(1)}%)
+              </span>
             </div>
           </div>
         )}
@@ -92,7 +109,7 @@ const TaskCreationModal: React.FC<TaskCreationModalProps> = ({
               id="task-title"
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={e => setTitle(e.target.value)}
               placeholder="Enter task title..."
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               disabled={isSubmitting}
@@ -100,9 +117,7 @@ const TaskCreationModal: React.FC<TaskCreationModalProps> = ({
               required
               autoFocus
             />
-            <p className="mt-1 text-xs text-gray-500">
-              {title.length}/200 characters
-            </p>
+            <p className="mt-1 text-xs text-gray-500">{title.length}/200 characters</p>
           </div>
 
           <div className="bg-gray-50 rounded-lg p-4 mb-6">
@@ -159,8 +174,18 @@ const TaskCreationModal: React.FC<TaskCreationModalProps> = ({
                 </>
               ) : (
                 <>
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                    />
                   </svg>
                   Create Task
                 </>

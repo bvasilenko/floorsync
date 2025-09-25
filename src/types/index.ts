@@ -11,11 +11,11 @@ export interface UserSession {
 }
 
 /* Checklist item status types */
-export type ChecklistItemStatus = 
-  | 'not_started' 
-  | 'in_progress' 
-  | 'blocked' 
-  | 'final_check_awaiting' 
+export type ChecklistItemStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'blocked'
+  | 'final_check_awaiting'
   | 'done';
 
 /* Checklist item interface */
