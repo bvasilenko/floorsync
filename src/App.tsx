@@ -1,21 +1,37 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect } from 'react';
+
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
-import { useAuthStore } from './stores/authStore';
+import { authStore } from './stores/authStore';
+import { useReactiveComponent } from './hooks/useReactiveComponent';
+import type { UserSession } from './types';
 
 function App() {
-  const { restoreSession, userSession, isLoading } = useAuthStore();
+  const { when } = useReactiveComponent();
 
-  /* Restore session on app startup */
+  const [userSession, setUserSession] = useState<UserSession | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
   useEffect(() => {
-    restoreSession();
-  }, [restoreSession]);
+    when(authStore.userSession$, session => {
+      setUserSession(session);
+    });
 
-  /* Show loading screen during session restoration */
-  if (isLoading) {
+    when(authStore.isLoading$, loading => {
+      setIsLoading(loading);
+    });
+
+    authStore.restoreSession();
+  }, [when]);
+
+  const shouldShowLoading = () => {
+    return authStore.isLoading || isLoading;
+  };
+
+  if (shouldShowLoading()) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -30,19 +46,26 @@ function App() {
     <BrowserRouter>
       <div className="min-h-screen bg-gray-50">
         <Routes>
-          <Route path="/login" element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          } />
-          <Route path="/dashboard" element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/" element={
-            <Navigate to={userSession ? "/dashboard" : "/login"} replace />
-          } />
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <Login />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/"
+            element={<Navigate to={userSession ? '/dashboard' : '/login'} replace />}
+          />
         </Routes>
       </div>
     </BrowserRouter>
