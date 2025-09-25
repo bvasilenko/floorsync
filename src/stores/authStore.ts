@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import { BehaviorSubject } from 'rxjs';
+import { BehaviorSubject, Observable } from 'rxjs';
 import { createUserDatabase } from '../database';
 import { storeAuthState, getStoredAuthState, clearAuthState } from '../utils/session';
 import type { UserSession } from '../types';
-import { useTaskStore } from './taskStore';
+// import { sleep } from '../utils/async';
 
-interface AuthStore {
+interface UnifiedAuthStoreInterface {
   userSession: UserSession | null;
   isLoading: boolean;
   error: string | null;
@@ -15,92 +15,114 @@ interface AuthStore {
   initializeUser: (userId: string) => Promise<void>;
   clearError: () => void;
   restoreSession: () => Promise<void>;
+
+  userSession$: Observable<UserSession | null>;
+  isLoading$: Observable<boolean>;
+  error$: Observable<string | null>;
 }
 
-/* Enhanced store with RxJS capabilities */
-interface AuthStoreWithRx extends AuthStore {
-  /* RxJS observables for controlled reactivity */
-  userSession$: BehaviorSubject<UserSession | null>;
-  isLoading$: BehaviorSubject<boolean>;
-  error$: BehaviorSubject<string | null>;
-
-  /* Static snapshot access (non-reactive) */
-  snapshot: {
-    userSession: UserSession | null;
-    isLoading: boolean;
-    error: string | null;
-  };
-
-  /* Silent update methods (no reactive emission) */
-  silentUpdate: (partial: Partial<Pick<AuthStore, 'userSession' | 'isLoading' | 'error'>>) => void;
+interface InternalAuthStore {
+  userSession: UserSession | null;
+  isLoading: boolean;
+  error: string | null;
 }
 
-export const useAuthStore = create<AuthStore>((set, get) => ({
-  userSession: null,
-  isLoading: false,
-  error: null,
+class UnifiedAuthStore implements UnifiedAuthStoreInterface {
+  private zustandStore = create<InternalAuthStore>(() => ({
+    userSession: null,
+    isLoading: false,
+    error: null,
+  }));
 
-  login: async (userName: string) => {
+  private userSessionSubject = new BehaviorSubject<UserSession | null>(null);
+  private isLoadingSubject = new BehaviorSubject<boolean>(false);
+  private errorSubject = new BehaviorSubject<string | null>(null);
+
+  get userSession(): UserSession | null {
+    return this.zustandStore.getState().userSession;
+  }
+
+  get isLoading(): boolean {
+    return this.zustandStore.getState().isLoading;
+  }
+
+  get error(): string | null {
+    return this.zustandStore.getState().error;
+  }
+
+  get userSession$(): Observable<UserSession | null> {
+    return this.userSessionSubject.asObservable();
+  }
+
+  get isLoading$(): Observable<boolean> {
+    return this.isLoadingSubject.asObservable();
+  }
+
+  get error$(): Observable<string | null> {
+    return this.errorSubject.asObservable();
+  }
+
+  private setState(partial: Partial<InternalAuthStore>): void {
+    this.zustandStore.setState(partial);
+
+    if (typeof partial.userSession !== 'undefined') {
+      this.userSessionSubject.next(partial.userSession);
+    }
+    if (typeof partial.isLoading !== 'undefined') {
+      this.isLoadingSubject.next(partial.isLoading);
+    }
+    if (typeof partial.error !== 'undefined') {
+      this.errorSubject.next(partial.error);
+    }
+  }
+
+  async login(userName: string): Promise<void> {
     if (!userName.trim()) {
-      set({ error: 'User name cannot be empty' });
-      /* Update RxJS observables */
-      authStoreRx.error$.next('User name cannot be empty');
+      this.setState({ error: 'User name cannot be empty' });
       return;
     }
 
-    set({ isLoading: true, error: null });
-    /* Update RxJS observables */
-    authStoreRx.isLoading$.next(true);
-    authStoreRx.error$.next(null);
+    this.setState({ isLoading: true, error: null });
 
     try {
-      await get().initializeUser(userName.trim());
+      await this.initializeUser(userName.trim());
 
-      /* Store complete auth state to localStorage */
-      const authState = {
+      if (import.meta.env.DEV) {
+        // await sleep(1000); // Simulate network delay
+      }
+
+      storeAuthState({
         userId: userName.trim(),
         isAuthenticated: true,
         timestamp: Date.now(),
-      };
-      storeAuthState(authState);
+      });
 
-      set({ isLoading: false });
-      authStoreRx.isLoading$.next(false);
+      this.setState({ isLoading: false });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Login failed';
-      set({
+      this.setState({
         error: errorMsg,
         isLoading: false,
       });
-      authStoreRx.error$.next(errorMsg);
-      authStoreRx.isLoading$.next(false);
     }
-  },
+  }
 
-  logout: async () => {
-    const session = get().userSession;
+  async logout(): Promise<void> {
+    const session = this.userSession;
 
     if (session?.database) {
       await session.database.close();
     }
 
-    /* Clear complete auth state from localStorage */
     clearAuthState();
 
-    /* Reset task store */
-    useTaskStore.getState().reset();
-
-    set({
+    this.setState({
       userSession: null,
       error: null,
     });
+  }
 
-    /* Update RxJS observables */
-    authStoreRx.userSession$.next(null);
-    authStoreRx.error$.next(null);
-  },
-
-  initializeUser: async (userName: string) => {
+  async initializeUser(userName: string): Promise<void> {
     try {
       const database = await createUserDatabase(userName);
 
@@ -110,112 +132,39 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         isActive: true,
       };
 
-      set({ userSession });
-      /* Update RxJS observables */
-      authStoreRx.userSession$.next(userSession);
+      this.setState({ userSession });
     } catch (error) {
       throw new Error(
         `Failed to initialize user database: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
-  },
+  }
 
-  clearError: () => {
-    set({ error: null });
-    authStoreRx.error$.next(null);
-  },
+  clearError(): void {
+    this.setState({ error: null });
+  }
 
-  restoreSession: async () => {
+  async restoreSession(): Promise<void> {
     const storedAuthState = getStoredAuthState();
 
     if (storedAuthState && storedAuthState.isAuthenticated) {
-      set({ isLoading: true });
-      authStoreRx.isLoading$.next(true);
+      this.setState({ isLoading: true });
 
       try {
-        await get().initializeUser(storedAuthState.userId);
-        set({ isLoading: false });
-        authStoreRx.isLoading$.next(false);
+        await this.initializeUser(storedAuthState.userId);
+        this.setState({ isLoading: false });
       } catch (error) {
         console.error('Session restoration failed - database initialization error:', error);
         const errorMsg = 'Failed to restore session - database issue';
-        set({
+        this.setState({
           error: errorMsg,
           isLoading: false,
         });
-        authStoreRx.error$.next(errorMsg);
-        authStoreRx.isLoading$.next(false);
-        /* DO NOT clear localStorage - user is still authenticated, just database issue */
       }
     }
-  },
-}));
-
-/* RxJS Enhancement Layer - implements the Angular pattern */
-class AuthStoreRx {
-  /* RxJS Observables for controlled reactivity */
-  userSession$: BehaviorSubject<UserSession | null>;
-  isLoading$: BehaviorSubject<boolean>;
-  error$: BehaviorSubject<string | null>;
-
-  constructor() {
-    /* Initialize with default values - will be synced after store creation */
-    this.userSession$ = new BehaviorSubject<UserSession | null>(null);
-    this.isLoading$ = new BehaviorSubject<boolean>(false);
-    this.error$ = new BehaviorSubject<string | null>(null);
-  }
-
-  /* Initialize BehaviorSubjects with actual Zustand state */
-  syncWithStore(store: typeof useAuthStore) {
-    const state = store.getState();
-    this.userSession$.next(state.userSession);
-    this.isLoading$.next(state.isLoading);
-    this.error$.next(state.error);
-  }
-
-  /* Static snapshot access - non-reactive like Angular's snapshot */
-  get snapshot() {
-    return {
-      userSession: this.userSession$.getValue(),
-      isLoading: this.isLoading$.getValue(),
-      error: this.error$.getValue(),
-    };
-  }
-
-  /* Silent update - hotpatch without triggering reactive watchers */
-  silentUpdate(partial: Partial<Pick<AuthStore, 'userSession' | 'isLoading' | 'error'>>) {
-    const zustandState = useAuthStore.getState();
-
-    /* Update Zustand silently by directly calling setState without triggering subscriptions */
-    useAuthStore.setState(
-      { ...zustandState, ...partial },
-      true // replace flag - prevents Zustand subscribers from firing
-    );
-
-    /* Update RxJS subjects internally without emitting to subscribers */
-    if ('userSession' in partial) {
-      (this.userSession$ as any)._value = partial.userSession;
-    }
-    if ('isLoading' in partial) {
-      (this.isLoading$ as any)._value = partial.isLoading;
-    }
-    if ('error' in partial) {
-      (this.error$ as any)._value = partial.error;
-    }
-  }
-
-  /* Cleanup method */
-  destroy() {
-    this.userSession$.complete();
-    this.isLoading$.complete();
-    this.error$.complete();
   }
 }
 
-/* Export instances */
-export const authStore = useAuthStore;
-export const authStoreRx = new AuthStoreRx();
+const unifiedAuthStoreInstance = new UnifiedAuthStore();
 
-/* Sync initial state between Zustand and RxJS */
-authStoreRx.syncWithStore(useAuthStore);
-authStoreRx.syncWithStore(useAuthStore);
+export const authStore: UnifiedAuthStoreInterface = unifiedAuthStoreInstance;

@@ -3,44 +3,148 @@ import { useNavigate } from 'react-router-dom';
 
 import FloorPlanView from './FloorPlanView';
 import TaskCreationModal from './TaskCreationModal';
-import { useAuthStore, authStoreRx } from '../stores/authStore';
-import { useTaskStore, taskStoreRx } from '../stores/taskStore';
+import { authStore } from '../stores/authStore';
+import { taskStore } from '../stores/taskStore';
 import { useReactiveComponent } from '../hooks/useReactiveComponent';
 import type { TaskCoordinates, TaskDocument, UserSession } from '../types';
+
+// SVG Icon Components
+const ChecklistStatusCheckbox: React.FC<{
+  status: TaskDocument['checklist'][0]['status'];
+  onClick: () => void;
+}> = ({ status, onClick }) => {
+  const getCheckboxVariant = () => {
+    switch (status) {
+      case 'done':
+        return (
+          <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+            <rect
+              x="3"
+              y="3"
+              width="18"
+              height="18"
+              rx="3"
+              className="fill-current"
+              stroke="currentColor"
+              strokeWidth="2"
+            />
+            <path
+              d="M9 12l2 2l4-4"
+              stroke="white"
+              strokeWidth="2"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        );
+      case 'blocked':
+        return (
+          <svg className="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 24 24">
+            <rect
+              x="3"
+              y="3"
+              width="18"
+              height="18"
+              rx="3"
+              className="fill-gray-300"
+              stroke="currentColor"
+              strokeWidth="2"
+            />
+            <path
+              d="M8 8l8 8M8 16l8-8"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        );
+      default:
+        return (
+          <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
+          </svg>
+        );
+    }
+  };
+
+  return (
+    <button onClick={onClick} className="hover:scale-110 transition-transform">
+      {getCheckboxVariant()}
+    </button>
+  );
+};
+
+const ChecklistStatusIndicator: React.FC<{ status: TaskDocument['checklist'][0]['status'] }> = ({
+  status,
+}) => {
+  const getStatusColor = () => {
+    switch (status) {
+      case 'not_started':
+        return 'bg-gray-400';
+      case 'in_progress':
+        return 'bg-yellow-400';
+      case 'blocked':
+        return 'bg-red-500';
+      case 'final_check_awaiting':
+        return 'bg-blue-500';
+      case 'done':
+        return 'bg-green-500';
+      default:
+        return 'bg-gray-400';
+    }
+  };
+
+  return <div className={`w-2 h-2 rounded-full mr-1 ${getStatusColor()}`} />;
+};
+
+const PencilIcon: React.FC = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+    />
+  </svg>
+);
+
+const TrashIcon: React.FC = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+    />
+  </svg>
+);
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { when } = useReactiveComponent();
-  const { logout } = useAuthStore();
-  const { createTask } = useTaskStore();
 
-  /* Component state - ONLY updates when observables emit */
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const [tasks, setTasks] = useState<TaskDocument[]>([]);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [pendingCoordinates, setPendingCoordinates] = useState<TaskCoordinates | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [collapsedChecklists, setCollapsedChecklists] = useState<Set<string>>(new Set());
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  /* CONTROLLED reactivity - subscribe only to what you need */
   useEffect(() => {
-    console.log('🎯 Dashboard: Setting up subscriptions');
-
-    /* Only react to user session changes */
-    when(authStoreRx.userSession$, session => {
-      console.log('📡 Dashboard: userSession changed', session?.userId || 'null');
+    when(authStore.userSession$, session => {
       setUserSession(session);
     });
 
-    /* Only react to tasks changes */
-    when(taskStoreRx.tasks$, taskList => {
-      console.log('📡 Dashboard: tasks changed', taskList.length);
-      setTasks(taskList);
+    when(taskStore.tasks$, taskList => {
+      setTasks(taskList as TaskDocument[]);
     });
-  }, []); // Empty deps - stable subscriptions
+  });
 
   const handleLogout = async () => {
-    await logout();
+    await authStore.logout();
     navigate('/login');
   };
 
@@ -51,7 +155,7 @@ const Dashboard: React.FC = () => {
 
   const handleTaskCreate = async (title: string, coordinates: TaskCoordinates) => {
     if (!userSession) return;
-    await createTask({ title, coordinates }, userSession);
+    await taskStore.createTask({ title, coordinates }, userSession);
   };
 
   const handleAddTaskClick = () => {
@@ -59,13 +163,77 @@ const Dashboard: React.FC = () => {
     setTaskModalOpen(true);
   };
 
+  // Checklist operation handlers
+  const handleChecklistStatusToggle = useCallback(
+    async (
+      taskId: string,
+      itemId: string,
+      currentStatus: TaskDocument['checklist'][0]['status']
+    ) => {
+      if (!userSession) return;
+
+      // Cycle through statuses: not_started -> in_progress -> done -> not_started
+      const statusCycle: TaskDocument['checklist'][0]['status'][] = [
+        'not_started',
+        'in_progress',
+        'done',
+      ];
+      const currentIndex = statusCycle.indexOf(currentStatus);
+      const nextStatus = statusCycle[(currentIndex + 1) % statusCycle.length];
+
+      await taskStore.updateChecklistItemStatus(taskId, itemId, nextStatus, userSession);
+    },
+    [userSession]
+  );
+
+  const handleDeleteChecklistItem = useCallback(
+    async (taskId: string, itemId: string) => {
+      if (!userSession) return;
+      await taskStore.deleteChecklistItem(taskId, itemId, userSession);
+    },
+    [userSession]
+  );
+
+  const handleAddChecklistItem = useCallback(
+    async (taskId: string) => {
+      if (!userSession) return;
+      const newItemText = prompt('Enter new checklist item:');
+      if (newItemText?.trim()) {
+        await taskStore.addChecklistItem(taskId, newItemText.trim(), userSession);
+      }
+    },
+    [userSession]
+  );
+
+  const handleUpdateChecklistItemText = useCallback(
+    async (taskId: string, itemId: string, currentText: string) => {
+      if (!userSession) return;
+      const newText = prompt('Edit item:', currentText);
+      if (newText?.trim()) {
+        await taskStore.updateChecklistItemText(taskId, itemId, newText.trim(), userSession);
+      }
+    },
+    [userSession]
+  );
+
+  const toggleChecklistCollapse = useCallback((taskId: string) => {
+    setCollapsedChecklists(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
+      }
+      return newSet;
+    });
+  }, []);
+
   /* Initialize tasks when user session is available */
   useEffect(() => {
     if (userSession) {
-      console.log('🚀 Dashboard: Loading tasks for user session');
-      useTaskStore.getState().loadAllTasks(userSession);
+      taskStore.loadAllTasks(userSession);
     }
-  }, [userSession]); // React to user session changes
+  }, [userSession]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -82,7 +250,6 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="fixed inset-0 bg-gray-900">
-      {/* Fullscreen Floor Plan */}
       <FloorPlanView onTaskCreate={handleFloorPlanClick} />
 
       {/* Floating Navigation Header */}
@@ -226,6 +393,7 @@ const Dashboard: React.FC = () => {
                     <div
                       key={task.id}
                       className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer"
+                      onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -258,6 +426,127 @@ const Dashboard: React.FC = () => {
                           </div>
                         </div>
                       </div>
+
+                      {/* Inline Task Editor - Expanded State */}
+                      {expandedTaskId === task.id && (
+                        <div className="mt-4 border-t border-gray-200 pt-4">
+                          {/* Collapsible Checklist Section */}
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <button
+                                onClick={() => toggleChecklistCollapse(task.id)}
+                                className="flex items-center space-x-2 font-semibold text-gray-900 hover:text-indigo-600 transition-colors"
+                              >
+                                <svg
+                                  className={`w-4 h-4 transition-transform ${collapsedChecklists.has(task.id) ? 'rotate-0' : 'rotate-90'}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 5l7 7-7 7"
+                                  />
+                                </svg>
+                                <span>Checklist</span>
+                              </button>
+                              <span className="text-sm text-gray-500">
+                                STEPS {task.checklist.length}
+                              </span>
+                            </div>
+
+                            {/* Collapsible Content */}
+                            {!collapsedChecklists.has(task.id) && (
+                              <div className="animate-in slide-in-from-top-2 duration-200">
+                                <h5 className="font-semibold text-gray-800 mb-3">
+                                  {task.checklistName}
+                                </h5>
+
+                                {/* Checklist Items */}
+                                <div className="space-y-2">
+                                  {task.checklist.map(item => (
+                                    <div key={item.id} className="flex items-start space-x-3">
+                                      {/* SVG Checkbox */}
+                                      <div className="flex-shrink-0 mt-0.5">
+                                        <ChecklistStatusCheckbox
+                                          status={item.status}
+                                          onClick={() =>
+                                            handleChecklistStatusToggle(
+                                              task.id,
+                                              item.id,
+                                              item.status
+                                            )
+                                          }
+                                        />
+                                      </div>
+
+                                      {/* Item Content */}
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-sm text-gray-900">{item.text}</div>
+                                        <div className="flex items-center mt-1">
+                                          <ChecklistStatusIndicator status={item.status} />
+                                          <span className="text-xs text-gray-500 capitalize">
+                                            {item.status.replace('_', ' ')}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {/* Edit/Delete Icons */}
+                                      <div className="flex-shrink-0 flex items-center space-x-1">
+                                        <button
+                                          className="p-1 text-gray-400 hover:text-gray-600"
+                                          onClick={e => {
+                                            e.stopPropagation();
+                                            handleUpdateChecklistItemText(
+                                              task.id,
+                                              item.id,
+                                              item.text
+                                            );
+                                          }}
+                                        >
+                                          <PencilIcon />
+                                        </button>
+                                        <button
+                                          className="p-1 text-gray-400 hover:text-red-600"
+                                          onClick={e => {
+                                            e.stopPropagation();
+                                            handleDeleteChecklistItem(task.id, item.id);
+                                          }}
+                                        >
+                                          <TrashIcon />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+
+                                  {/* Add New Item Button */}
+                                  <button
+                                    className="flex items-center space-x-2 text-sm text-indigo-600 hover:text-indigo-800"
+                                    onClick={() => handleAddChecklistItem(task.id)}
+                                  >
+                                    <svg
+                                      className="w-4 h-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 4v16m8-8H4"
+                                      />
+                                    </svg>
+                                    <span>Add new item</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -282,7 +571,6 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Task Creation Modal */}
       <TaskCreationModal
         isOpen={taskModalOpen}
         coordinates={pendingCoordinates}

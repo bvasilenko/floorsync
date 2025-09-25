@@ -1,34 +1,18 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import * as PIXI from 'pixi.js';
 
-import { useTaskStore, taskStoreRx } from '../stores/taskStore';
-import { authStoreRx } from '../stores/authStore';
+import { taskStore } from '../stores/taskStore';
+import { authStore } from '../stores/authStore';
 import { useReactiveComponent } from '../hooks/useReactiveComponent';
 import { FLOOR_PLAN_CONSTANTS } from '../constants';
 import type { TaskDocument, TaskCoordinates, UserSession } from '../types';
+import { throttle } from '../utils/async';
 
 interface FloorPlanViewProps {
   onTaskCreate?: (coordinates: TaskCoordinates) => void;
 }
 
-const markerContainerId = 0;
-
-/* Debug throttle function - preserved for future use */
-const throttle = (windowMs: number) => {
-  let throttleHandle: number | null = null;
-  return (func: () => void) => {
-    if (throttleHandle) {
-      clearTimeout(throttleHandle);
-    }
-    throttleHandle = setTimeout(() => func(), windowMs);
-  };
-};
-
-let instanceId = 0;
-
-/* PixiJS renderer for performance-optimized marker rendering */
 class FloorPlanRenderer {
-  public instanceId = instanceId++;
   private pixiApp: PIXI.Application | null = null;
   private floorPlanSprite: PIXI.Sprite | null = null;
   private markerContainer: PIXI.Container | null = null;
@@ -46,7 +30,6 @@ class FloorPlanRenderer {
 
   private ensureInitialized(): boolean {
     if (!this.pixiApp) {
-      // console.error(`!!! FloorPlanRenderer ( pixiApp is null - initialization required )`);
       return false;
     }
     return true;
@@ -54,7 +37,6 @@ class FloorPlanRenderer {
 
   private ensureMarkerContainer(): boolean {
     if (!this.markerContainer) {
-      // console.error(`!!! FloorPlanRenderer ( markerContainer is null - initialization required )`);
       return false;
     }
     return true;
@@ -87,19 +69,7 @@ class FloorPlanRenderer {
     };
   }
 
-  private logError(methodName: string, userMessage: string, error?: unknown): void {
-    // Debug: method caller tracking
-    void methodName; // Preserve parameter for debugging
-    console.error(userMessage, error);
-  }
-
-  private validateRelativeCoordinates(
-    relativeX: number,
-    relativeY: number,
-    methodName: string
-  ): boolean {
-    // Debug: method caller tracking
-    void methodName; // Preserve parameter for debugging
+  private validateRelativeCoordinates(relativeX: number, relativeY: number): boolean {
     if (relativeX < 0 || relativeX > 1 || relativeY < 0 || relativeY > 1) {
       return false;
     }
@@ -127,26 +97,11 @@ class FloorPlanRenderer {
     });
 
     this.markerContainer = new PIXI.Container();
-    (this.markerContainer as PIXI.Container & { markerContainerId: number })['markerContainerId'] =
-      markerContainerId;
 
     this.pixiApp.stage.addChild(this.markerContainer);
     container.appendChild(this.pixiApp.canvas);
 
     await this.loadFloorPlan('/sample-floor-plan.png');
-
-    const marker = this.createMarkerGraphics('in_progress');
-    marker.x = 450;
-    marker.y = 450;
-
-    if (
-      this.instanceId == 2 &&
-      (this.markerContainer as PIXI.Container & { markerContainerId: number })[
-        'markerContainerId'
-      ] == 2
-    ) {
-      this.markerContainer!.addChild(marker);
-    }
   }
 
   private async loadFloorPlan(imagePath: string) {
@@ -178,11 +133,15 @@ class FloorPlanRenderer {
       this.pixiApp!.stage.addChildAt(this.floorPlanSprite, 0);
 
       if (this.markerContainer) {
+        /* Position marker container to match floor plan transformations */
+        this.markerContainer.scale.set(scale);
+        this.markerContainer.x = appWidth / 2;
+        this.markerContainer.y = appHeight / 2;
+
         this.pixiApp!.stage.addChild(this.markerContainer);
       }
     } catch (error) {
-      this.logError('loadFloorPlan', 'Failed to load floor plan image:', error);
-
+      console.error('Failed to load floor plan image:', error);
       throw error;
     }
   }
@@ -197,7 +156,7 @@ class FloorPlanRenderer {
     const relativeX = (screenX - bounds.x) / bounds.width;
     const relativeY = (screenY - bounds.y) / bounds.height;
 
-    if (!this.validateRelativeCoordinates(relativeX, relativeY, 'screenToFloorPlanCoords')) {
+    if (!this.validateRelativeCoordinates(relativeX, relativeY)) {
       return null;
     }
 
@@ -221,10 +180,8 @@ class FloorPlanRenderer {
     return result;
   }
 
-  /* O(n) initial, O(1) React complexity */
   renderAllMarkers(tasks: TaskDocument[]): void {
     if (!this.ensureMarkerContainer()) {
-      console.log('!!! NOOOO');
       return;
     }
 
@@ -238,26 +195,22 @@ class FloorPlanRenderer {
   }
 
   private renderSingleMarker(task: TaskDocument) {
-    if (!this.ensureMarkerContainer()) {
-      return;
-    }
-
-    const screenCoords = this.floorPlanToScreenCoords(task.coordinates.x, task.coordinates.y);
-
-    if (!screenCoords) {
-      console.log('!!! NOOOOOO');
+    if (!this.ensureMarkerContainer() || !this.floorPlanSprite) {
       return;
     }
 
     const status = this.getTaskOverallStatus(task);
-
     const marker = this.createMarkerGraphics(status);
 
-    marker.x = screenCoords.x;
-    marker.y = screenCoords.y;
+    /* Convert relative coordinates (0-1) to floor plan local coordinates */
+    const texture = this.floorPlanSprite.texture;
+    const localX = (task.coordinates.x - 0.5) * texture.width;
+    const localY = (task.coordinates.y - 0.5) * texture.height;
+
+    marker.x = localX;
+    marker.y = localY;
 
     this.markerTextures.set(task.id, marker);
-
     this.markerContainer!.addChild(marker);
   }
 
@@ -327,7 +280,6 @@ class FloorPlanRenderer {
   }
 
   destroy(): void {
-    // Destroy PixiJS application
     if (this.pixiApp) {
       this.pixiApp.destroy(true);
     }
@@ -340,7 +292,8 @@ class FloorPlanRenderer {
 
     const { width, height } = this.getElementDimensions(mountElement);
     this.pixiApp!.renderer.resize(width, height);
-    if (this.floorPlanSprite) {
+
+    if (this.floorPlanSprite && this.markerContainer) {
       const texture = this.floorPlanSprite.texture;
       const scaleX = width / texture.width;
       const scaleY = height / texture.height;
@@ -349,24 +302,23 @@ class FloorPlanRenderer {
       this.floorPlanSprite.scale.set(scale);
       this.floorPlanSprite.x = width / 2;
       this.floorPlanSprite.y = height / 2;
+
+      /* O(1): Marker container follows floor plan transformations exactly.
+         Since markers are positioned in floor plan local coordinates, they automatically
+         maintain correct relative positions for all 200+ markers simultaneously */
+      this.markerContainer.scale.set(scale);
+      this.markerContainer.x = width / 2;
+      this.markerContainer.y = height / 2;
     }
   }
 }
 
-let componentInstance = 0;
 const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
-  let useEffectCallN = 0;
   const { when } = useReactiveComponent();
 
-  const throttler = throttle(0); // Debug throttler - preserved for future use
+  const throttler = throttle(0);
 
   const renderRef = useRef<HTMLDivElement>(null);
-  const [engine, setEngine] = useState<{
-    app: PIXI.Application;
-    renderer: FloorPlanRenderer;
-    view: HTMLElement;
-    handleResize: () => void;
-  } | null>(null);
   const engineRef = useRef<{
     app: PIXI.Application;
     renderer: FloorPlanRenderer;
@@ -374,39 +326,26 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
     handleResize: () => void;
   } | null>(null);
 
-  /* Component state - ONLY updates when observables emit */
   const [tasks, setTasks] = useState<TaskDocument[]>([]);
   const [tasksNeedingRepaint, setTasksNeedingRepaint] = useState<Set<string>>(new Set());
   const [userSession, setUserSession] = useState<UserSession | null>(null);
+  const [engineReady, setEngineReady] = useState<boolean>(false);
 
-  const { loadAllTasks, clearRepaintMarkers } = useTaskStore();
+  const clearRepaintMarkers = taskStore.clearRepaintMarkers.bind(taskStore);
 
-  componentInstance++;
-  console.log('!!! EXEC COMPONENT FUNC []', componentInstance, useEffectCallN);
-
-  /* CONTROLLED reactivity - subscribe only to what you need */
   useEffect(() => {
-    console.log('🎯 FloorPlanView: Setting up subscriptions');
-
-    /* Only react to user session changes */
-    when(authStoreRx.userSession$, session => {
-      console.log('📡 FloorPlanView: userSession changed', session?.userId || 'null');
+    when(authStore.userSession$, session => {
       setUserSession(session);
     });
 
-    /* Only react to tasks changes */
-    when(taskStoreRx.tasks$, taskList => {
-      console.log('📡 FloorPlanView: tasks changed', taskList.length);
-      setTasks(taskList);
+    when(taskStore.tasks$, taskList => {
+      setTasks(taskList as TaskDocument[]);
     });
 
-    /* Only react to repaint markers changes */
-    when(taskStoreRx.tasksNeedingRepaint$, repaintSet => {
-      console.log('📡 FloorPlanView: tasksNeedingRepaint changed', repaintSet.size);
-      setTasksNeedingRepaint(repaintSet);
+    when(taskStore.tasksNeedingRepaint$, repaintSet => {
+      setTasksNeedingRepaint(repaintSet as Set<string>);
     });
-  }, []); // Empty deps - stable subscriptions
-  console.log('!!! EXEC COMPONENT FUNC []', componentInstance, useEffectCallN);
+  });
 
   /* Stable callback to prevent re-initialization cycles */
   const stableOnTaskCreate = useCallback(
@@ -421,27 +360,19 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
   /* Helper to check if renderer is available */
   const isRendererReady = useCallback(() => {
     return !!engineRef.current?.renderer;
-  }, [engine]);
+  }, []);
 
   /* Initialize PixiJS renderer - stable dependencies */
   useEffect(() => {
-    useEffectCallN++;
-    console.log('!!! USE EFFECT []', componentInstance, useEffectCallN);
-
     const mountElement = renderRef.current;
     if (!mountElement) {
       return;
     }
 
-    let endCallback = () => {
-      // console.error('!!! NO CALLBACK - FAILED DESTROY ATTEMPT')
-    };
-
     const initRenderer = async () => {
       try {
         const renderer = new FloorPlanRenderer();
 
-        // Create wrapper div for the canvas (following proven working pattern)
         const view = document.createElement('div');
         view.style.height = '100%';
         view.style.width = '100%';
@@ -478,9 +409,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
 
         const obj = { app: renderer.app!, renderer, view, handleResize };
         engineRef.current = obj;
-        setEngine(obj);
-
-        endCallback = () => {};
+        setEngineReady(true);
       } catch (error) {
         console.error('Failed to initialize floor plan renderer:', error);
       }
@@ -492,8 +421,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
 
     // Cleanup function
     return () => {
-      endCallback();
-
       if (engineRef.current) {
         const { renderer, view, handleResize } = engineRef.current;
 
@@ -511,41 +438,23 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
         engineRef.current = null;
       }
     };
-  }, [stableOnTaskCreate]);
+  }, [stableOnTaskCreate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Reactive stream subscription - combines PixiJS init complete + RxDB task stream */
   useEffect(() => {
-    if (!userSession || !engineRef.current?.renderer) {
+    if (!userSession || !engineReady || !engineRef.current?.renderer) {
       return;
     }
 
     const renderer = engineRef.current.renderer;
 
-    setTimeout(() => {
-      if (tasks && tasks.length > 0) {
-        renderer.renderAllMarkers(tasks);
-      }
-    });
-  }, [isRendererReady, userSession, tasks]);
-
-  /* Initialize tasks when user session is available */
-  useEffect(() => {
-    if (userSession) {
-      console.log('🚀 FloorPlanView: Loading tasks for user session');
-      loadAllTasks(userSession);
+    if (tasks && tasks.length > 0) {
+      renderer.renderAllMarkers(tasks);
     }
-  }, [userSession, loadAllTasks]);
+  }, [engineReady, userSession, tasks]);
 
-  useEffect(() => {
-    // NOTE: Initial rendering is now handled by reactive streams subscription above
-    // This useEffect is disabled to prevent duplicate rendering
-    // Only repaint logic for specific markers remains active via tasksNeedingRepaint
-  }, [tasks, isRendererReady]);
-
-  /* Repaint changed markers when needed */
   useEffect(() => {
     if (isRendererReady() && tasksNeedingRepaint.size > 0) {
-      console.log('🎨 FloorPlanView: Repainting changed markers', tasksNeedingRepaint.size);
       engineRef.current!.renderer.repaintChangedMarkers(tasksNeedingRepaint, tasks);
       clearRepaintMarkers();
     }

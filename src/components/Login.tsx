@@ -1,23 +1,24 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { useAuthStore } from '../stores/authStore';
+import { authStore } from '../stores/authStore';
 
 const Login: React.FC = () => {
   const [name, setName] = useState('');
   const navigate = useNavigate();
-  const { login, isLoading, error, clearError } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
 
-    clearError();
-    await login(name.trim());
+    authStore.clearError();
+    await authStore.login(name.trim());
 
-    if (useAuthStore.getState().userSession) {
+    if (authStore.userSession) {
       navigate('/dashboard');
     }
   };
+
+  const { isLoading, error } = { isLoading: authStore.isLoading, error: authStore.error };
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">

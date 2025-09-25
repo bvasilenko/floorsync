@@ -5,41 +5,30 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
-import { useAuthStore, authStoreRx } from './stores/authStore';
+import { authStore } from './stores/authStore';
 import { useReactiveComponent } from './hooks/useReactiveComponent';
 import type { UserSession } from './types';
 
 function App() {
   const { when } = useReactiveComponent();
 
-  /* Component state - ONLY updates when observables emit */
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  /* CONTROLLED reactivity - subscribe only to what you need */
   useEffect(() => {
-    console.log('🎯 App: Setting up subscriptions');
-
-    /* Only react to user session changes - SOLID DRY KISS decoupling */
-    when(authStoreRx.userSession$, session => {
-      console.log('📡 App: userSession changed', session?.userId || 'null');
+    when(authStore.userSession$, session => {
       setUserSession(session);
     });
 
-    /* Only react to loading state changes */
-    when(authStoreRx.isLoading$, loading => {
-      console.log('📡 App: isLoading changed', loading);
+    when(authStore.isLoading$, loading => {
       setIsLoading(loading);
     });
 
-    /* Initialize app - direct action call, no subscription needed */
-    console.log('🚀 App: Calling restoreSession');
-    useAuthStore.getState().restoreSession();
-  }, []); // Remove 'when' from dependencies to prevent re-subscription
+    authStore.restoreSession();
+  }, [when]);
 
-  /* Static access when needed - no reactive subscription, following Angular pattern */
   const shouldShowLoading = () => {
-    return authStoreRx.snapshot.isLoading || isLoading;
+    return authStore.isLoading || isLoading;
   };
 
   if (shouldShowLoading()) {

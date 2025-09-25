@@ -1,4 +1,4 @@
-import { useEffect, useRef, useReducer, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Observable, Subscription } from 'rxjs';
 
 /* Subscription management - prevents zombie subscriptions */
@@ -21,13 +21,9 @@ class UnsubscriberFactory {
   }
 }
 
-/* React hook implementing Angular's BaseComponent pattern */
 export const useReactiveComponent = () => {
   const unsubscriberRef = useRef<Unsubscriber | null>(null);
   const unsubscriberFactoryRef = useRef(new UnsubscriberFactory());
-
-  /* Force re-render capability similar to Angular's detectChanges */
-  const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
 
   if (!unsubscriberRef.current) {
     unsubscriberRef.current = unsubscriberFactoryRef.current.new();
@@ -37,24 +33,16 @@ export const useReactiveComponent = () => {
   const when = useCallback(<T>(observable: Observable<T>, handler: (next: T) => void) => {
     const subscription = observable.subscribe(value => {
       handler(value);
-      /* Trigger re-render after handling observable emission */
-      forceUpdate();
     });
 
     unsubscriberRef.current!.add(subscription);
   }, []); // Empty deps - stable reference
 
-  /* Manual change detection */
-  const detectChanges = useCallback(() => {
-    forceUpdate();
-  }, []);
-
-  /* Cleanup all subscriptions when component unmounts */
   useEffect(() => {
     return () => {
       unsubscriberRef.current?.unsubscribeAll();
     };
   }, []);
 
-  return { when, detectChanges };
+  return { when };
 };
