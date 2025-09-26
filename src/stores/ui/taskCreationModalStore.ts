@@ -17,12 +17,10 @@ const initialState: TaskCreationModalState = {
   isSubmitting: false,
 };
 
-export const useTaskCreationModalStore = create<TaskCreationModalStore>((set) => ({
+export const useTaskCreationModalStore = create<TaskCreationModalStore>(set => ({
   ...initialState,
-  
-  setTitle: (title) =>
-    set({ title }),
-    
-  setIsSubmitting: (submitting) =>
-    set({ isSubmitting: submitting }),
+
+  setTitle: title => set({ title }),
+
+  setIsSubmitting: submitting => set({ isSubmitting: submitting }),
 }));

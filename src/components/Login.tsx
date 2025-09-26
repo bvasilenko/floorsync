@@ -1,81 +1,56 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { authStore } from '../stores/authStore';
-import { useLoginStore } from '../stores/ui/loginStore';
+import { useAuthStore } from '../stores/authStore';
+import { BuildingIcon, InfoIcon, SpinnerIcon } from './icons';
 
 const Login: React.FC = () => {
-  const { name, setName } = useLoginStore();
+  const [name, setName] = useState('');
   const navigate = useNavigate();
+  const { login, clearError, isLoading, error, userSession } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
 
-    authStore.clearError();
-    await authStore.login(name.trim());
+    clearError();
+    await login(name.trim());
 
-    if (authStore.userSession) {
+    if (userSession) {
       navigate('/dashboard');
     }
   };
 
-  const { isLoading, error } = { isLoading: authStore.isLoading, error: authStore.error };
-
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <div className="mx-auto h-16 w-16 bg-indigo-600 rounded-full flex items-center justify-center">
-            <svg
-              className="h-8 w-8 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-              />
-            </svg>
+          <div className="mx-auto h-20 w-20 bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-full flex items-center justify-center shadow-xl backdrop-blur-sm">
+            <BuildingIcon className="text-white" />
           </div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          <h2 className="mt-8 text-center text-4xl font-bold text-gray-800 bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
             Welcome to FloorSync
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-3 text-center text-lg text-gray-600 font-medium">
             Construction Task Management Platform
           </p>
-          <p className="mt-1 text-center text-xs text-gray-500">
+          <p className="mt-2 text-center text-sm text-gray-500">
             Enter your name to access your workspace
           </p>
         </div>
-        <div className="bg-white py-8 px-6 shadow rounded-lg">
-          <form className="space-y-6" onSubmit={handleSubmit}>
+        <div className="bg-white/30 backdrop-blur-xl border border-white/20 shadow-2xl rounded-2xl py-10 px-8">
+          <form className="space-y-8" onSubmit={handleSubmit}>
             {error && (
-              <div className="rounded-md bg-red-50 p-4 border border-red-200">
+              <div className="rounded-xl bg-red-50/80 backdrop-blur-sm p-5 border border-red-200/60">
                 <div className="flex">
-                  <svg
-                    className="h-5 w-5 text-red-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
+                  <InfoIcon className="h-6 w-6 text-red-500" />
                   <div className="ml-3">
-                    <div className="text-sm text-red-700">{error}</div>
+                    <div className="text-sm font-medium text-red-800">{error}</div>
                   </div>
                 </div>
               </div>
             )}
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="name" className="block text-sm font-bold text-gray-700 mb-3">
                 Your Name
               </label>
               <input
@@ -87,10 +62,10 @@ const Login: React.FC = () => {
                 value={name}
                 onChange={e => setName(e.target.value)}
                 disabled={isLoading}
-                className="appearance-none rounded-md relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:opacity-50 disabled:bg-gray-50"
+                className="appearance-none rounded-xl relative block w-full px-4 py-4 bg-white/50 backdrop-blur-sm border border-white/30 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400/50 sm:text-sm disabled:opacity-50 disabled:bg-gray-100/50 transition-all duration-200"
                 placeholder="e.g. John Smith, user1, manager..."
               />
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-2 text-xs text-gray-600 bg-white/50 backdrop-blur-sm rounded-lg p-2">
                 No password required. If this is your first time, a new workspace will be created.
               </p>
             </div>
@@ -98,35 +73,15 @@ const Login: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading || !name.trim()}
-                className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="group relative w-full flex justify-center py-4 px-6 border border-transparent text-sm font-bold rounded-xl text-white bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500 transition-all duration-200 shadow-lg hover:shadow-xl"
               >
-                {isLoading && (
-                  <svg
-                    className="animate-spin -ml-1 mr-3 h-4 w-4 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                )}
+                {isLoading && <SpinnerIcon className="animate-spin -ml-1 mr-3 text-white" />}
                 {isLoading ? 'Signing In...' : 'Sign In'}
               </button>
             </div>
           </form>
-          <div className="mt-6 text-center">
-            <p className="text-xs text-gray-400">
+          <div className="mt-8 text-center">
+            <p className="text-xs text-gray-500 bg-white/40 backdrop-blur-sm rounded-lg p-3">
               Each user gets their own secure workspace with complete data isolation
             </p>
           </div>

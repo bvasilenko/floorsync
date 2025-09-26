@@ -7,15 +7,12 @@ import type { RxJsonSchema, RxDatabase } from 'rxdb';
 
 import type { TaskDocument } from '../types';
 
-/* Add dev-mode plugin for detailed error messages in development */
 if (import.meta.env.DEV) {
   addRxPlugin(RxDBDevModePlugin);
 }
 
-/* Add update plugin for document.update() method */
 addRxPlugin(RxDBUpdatePlugin);
 
-/* Task schema for RxDB collection */
 export const TaskSchema: RxJsonSchema<TaskDocument> = {
   version: 0,
   primaryKey: 'id',
@@ -90,9 +87,7 @@ export const TaskSchema: RxJsonSchema<TaskDocument> = {
   indexes: ['userId'],
 };
 
-/* Internal helper - create and initialize database */
 const createAndInitializeDatabase = async (dbName: string): Promise<RxDatabase> => {
-  /* Use AJV validator in dev mode */
   const storage = import.meta.env.DEV
     ? wrappedValidateAjvStorage({ storage: getRxStorageDexie() })
     : getRxStorageDexie();
@@ -101,10 +96,9 @@ const createAndInitializeDatabase = async (dbName: string): Promise<RxDatabase> 
     name: dbName,
     storage,
     eventReduce: true,
-    ignoreDuplicate: true,
+    ignoreDuplicate: import.meta.env.DEV,
   });
 
-  /* Add tasks collection with schema */
   await database.addCollections({
     tasks: {
       schema: TaskSchema,
@@ -114,14 +108,12 @@ const createAndInitializeDatabase = async (dbName: string): Promise<RxDatabase> 
   return database;
 };
 
-/* Database-per-user pattern - complete physical separation */
 export const createUserDatabase = async (userId: string): Promise<RxDatabase> => {
   const dbName = `floorsync_${userId}`;
 
   try {
     return await createAndInitializeDatabase(dbName);
   } catch (error) {
-    /* Handle duplicate database error with single retry */
     if (error instanceof Error && error.message.includes('DB8')) {
       return await createAndInitializeDatabase(dbName);
     }

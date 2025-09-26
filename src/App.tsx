@@ -5,28 +5,17 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
-import { authStore } from './stores/authStore';
-import { useAppStore } from './stores/ui/appStore';
-import { useReactiveComponent } from './hooks/useReactiveComponent';
+import { useAuthStore } from './stores/authStore';
 
 function App() {
-  const { when } = useReactiveComponent();
-  const { userSession, setUserSession, isLoading, setIsLoading } = useAppStore();
+  const { userSession, isLoading, restoreSession } = useAuthStore();
 
   useEffect(() => {
-    when(authStore.userSession$, session => {
-      setUserSession(session);
-    });
-
-    when(authStore.isLoading$, loading => {
-      setIsLoading(loading);
-    });
-
-    authStore.restoreSession();
-  }, [when, setUserSession, setIsLoading]);
+    restoreSession();
+  }, [restoreSession]);
 
   const shouldShowLoading = () => {
-    return authStore.isLoading || isLoading;
+    return isLoading;
   };
 
   if (shouldShowLoading()) {

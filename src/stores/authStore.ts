@@ -1,139 +1,93 @@
-import { BehaviorSubject, Observable } from 'rxjs';
+import { create } from 'zustand';
 import { createUserDatabase } from '../database';
 import { storeAuthState, getStoredAuthState, clearAuthState } from '../utils/session';
-import { taskStore } from './taskStore';
+import { useDashboardStore } from './ui/dashboardStore';
+import { useFloorPlanViewStore } from './ui/floorPlanViewStore';
 import type { UserSession } from '../types';
-// import { sleep } from '../utils/async';
 
-interface UnifiedAuthStoreInterface {
+export interface AuthState {
   userSession: UserSession | null;
   isLoading: boolean;
   error: string | null;
+}
+
+export interface AuthActions {
+  setUserSession: (session: UserSession | null) => void;
+  setIsLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  clearError: () => void;
 
   login: (userId: string) => Promise<void>;
   logout: () => Promise<void>;
   initializeUser: (userId: string) => Promise<void>;
-  clearError: () => void;
   restoreSession: () => Promise<void>;
-
-  userSession$: Observable<UserSession | null>;
-  isLoading$: Observable<boolean>;
-  error$: Observable<string | null>;
 }
 
-interface InternalAuthStore {
-  userSession: UserSession | null;
-  isLoading: boolean;
-  error: string | null;
-}
+export type AuthStore = AuthState & AuthActions;
 
-class UnifiedAuthStore implements UnifiedAuthStoreInterface {
-  /* Private properties for RxDB integration */
-  
-  // BehaviorSubjects for caching and reactive state  
-  private userSessionSubject = new BehaviorSubject<UserSession | null>(null);
-  private isLoadingSubject = new BehaviorSubject<boolean>(false);
-  private errorSubject = new BehaviorSubject<string | null>(null);
+const initialState: AuthState = {
+  userSession: null,
+  isLoading: false,
+  error: null,
+};
 
-  // Synchronous getters (cached from BehaviorSubjects)
-  get userSession(): UserSession | null {
-    return this.userSessionSubject.value;
-  }
+export const useAuthStore = create<AuthStore>((set, get) => ({
+  ...initialState,
 
-  get isLoading(): boolean {
-    return this.isLoadingSubject.value;
-  }
+  setUserSession: session => set({ userSession: session }),
 
-  get error(): string | null {
-    return this.errorSubject.value;
-  }
+  setIsLoading: loading => set({ isLoading: loading }),
 
-  get userSession$(): Observable<UserSession | null> {
-    return this.userSessionSubject.asObservable();
-  }
+  setError: error => set({ error }),
 
-  get isLoading$(): Observable<boolean> {
-    return this.isLoadingSubject.asObservable();
-  }
+  clearError: () => set({ error: null }),
 
-  get error$(): Observable<string | null> {
-    return this.errorSubject.asObservable();
-  }
-
-  private setState(partial: Partial<InternalAuthStore>): void {
-    // Update BehaviorSubjects directly instead of Zustand
-    if (typeof partial.userSession !== 'undefined') {
-      this.userSessionSubject.next(partial.userSession);
-    }
-    if (typeof partial.isLoading !== 'undefined') {
-      this.isLoadingSubject.next(partial.isLoading);
-    }
-    if (typeof partial.error !== 'undefined') {
-      this.errorSubject.next(partial.error);
-    }
-  }
-
-  async login(userName: string): Promise<void> {
-    console.log('!!! authStore.login > starting login for user:', userName);
+  login: async (userName: string) => {
     if (!userName.trim()) {
-      this.setState({ error: 'User name cannot be empty' });
+      set({ error: 'User name cannot be empty' });
       return;
     }
 
-    this.setState({ isLoading: true, error: null });
+    set({ isLoading: true, error: null });
 
     try {
-      console.log('!!! authStore.login > initializeUser(', userName.trim(), ')');
-      await this.initializeUser(userName.trim());
+      await get().initializeUser(userName.trim());
 
-      if (import.meta.env.DEV) {
-        // await sleep(1000); // Simulate network delay
-      }
-
-      console.log('!!! authStore.login > storeAuthState for user:', userName.trim());
       storeAuthState({
         userId: userName.trim(),
         isAuthenticated: true,
         timestamp: Date.now(),
       });
 
-      console.log('!!! authStore.login > login complete for user:', userName.trim());
-      this.setState({ isLoading: false });
+      set({ isLoading: false });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Login failed';
-      console.log('!!! authStore.login > login failed:', errorMsg);
-      this.setState({
+      set({
         error: errorMsg,
         isLoading: false,
       });
     }
-  }
+  },
 
-  async logout(): Promise<void> {
-    console.log('!!! authStore.logout > starting logout');
-    const session = this.userSession;
-    console.log('!!! authStore.logout > current session userId:', session?.userId);
+  logout: async () => {
+    const session = get().userSession;
 
     if (session?.database) {
-      console.log('!!! authStore.logout > closing database for user:', session.userId);
       await session.database.close();
     }
 
-    console.log('!!! authStore.logout > calling taskStore.reset()');
-    taskStore.reset();
+    useDashboardStore.getState().resetTasks();
+    useFloorPlanViewStore.getState().resetTasks();
 
-    console.log('!!! authStore.logout > clearAuthState()');
     clearAuthState();
 
-    console.log('!!! authStore.logout > setState({ userSession: null })');
-    this.setState({
+    set({
       userSession: null,
       error: null,
     });
-    console.log('!!! authStore.logout > logout complete');
-  }
+  },
 
-  async initializeUser(userName: string): Promise<void> {
+  initializeUser: async (userName: string) => {
     try {
       const database = await createUserDatabase(userName);
 
@@ -143,39 +97,33 @@ class UnifiedAuthStore implements UnifiedAuthStoreInterface {
         isActive: true,
       };
 
-      this.setState({ userSession });
+      set({ userSession });
     } catch (error) {
       throw new Error(
         `Failed to initialize user database: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
-  }
+  },
 
-  clearError(): void {
-    this.setState({ error: null });
-  }
-
-  async restoreSession(): Promise<void> {
+  restoreSession: async () => {
     const storedAuthState = getStoredAuthState();
 
     if (storedAuthState && storedAuthState.isAuthenticated) {
-      this.setState({ isLoading: true });
+      set({ isLoading: true });
 
       try {
-        await this.initializeUser(storedAuthState.userId);
-        this.setState({ isLoading: false });
+        await get().initializeUser(storedAuthState.userId);
+        set({ isLoading: false });
       } catch (error) {
         console.error('Session restoration failed - database initialization error:', error);
         const errorMsg = 'Failed to restore session - database issue';
-        this.setState({
+        set({
           error: errorMsg,
           isLoading: false,
         });
       }
     }
-  }
-}
+  },
+}));
 
-const unifiedAuthStoreInstance = new UnifiedAuthStore();
-
-export const authStore: UnifiedAuthStoreInterface = unifiedAuthStoreInstance;
+export const authStore = useAuthStore;
