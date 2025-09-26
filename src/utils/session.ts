@@ -28,7 +28,7 @@ export const getStoredAuthState = (): StoredAuthState | null => {
   try {
     const stored = localStorage.getItem(AUTH_STATE_KEY);
     if (!stored) return null;
-    
+
     return JSON.parse(stored) as StoredAuthState;
   } catch {
     return null;
@@ -44,4 +44,4 @@ export const clearAuthState = (): void => {
 export const isUserLoggedIn = (): boolean => {
   const authState = getStoredAuthState();
   return authState !== null && authState.isAuthenticated;
-};;
+};
