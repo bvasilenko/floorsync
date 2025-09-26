@@ -1,15 +1,15 @@
 # FloorSync
 
-Offline-first construction task management web application built with React 19.
+Simple offline construction task app. Click floor plan, add tasks with checklists.
 
 ## Tech Stack
 
-- **React 19** with TypeScript strict mode
-- **RxDB** for offline-first database
-- **Zustand** for state management
-- **React Router DOM** for routing
-- **Tailwind CSS** for styling
-- **Vite** for build tooling
+- **React 19** + TypeScript strict
+- **RxDB** for offline data
+- **Zustand** for state  
+- **React Router** for navigation
+- **Tailwind** for CSS
+- **PixiJS** for floor plan rendering
 
 ## Development
 
@@ -20,40 +20,66 @@ npm install
 # Start development server
 npm run dev
 
-# Build for production
-npm run build
+# Run in production mode
+npm run build && npm run preview
 
 # Run linting
 npm run lint
 ```
 
+### Performance Testing
+
+[Performance test video](docs/performance-test.mp4)
+
+Run `window.createPerformanceTestTasks()` in browser console to create 1000 test tasks for performance validation.
+
 ## Architecture
 
-- Database-per-user isolation for security
-- Offline-first data persistence with IndexedDB
-- Performance-optimized rendering for 200+ floor plan markers
+RxDB handles offline data, Zustand manages UI state, React renders everything.
+
+```
+RxDB → Zustand → React
+```
 
 ## Project Structure
 
 ```
 src/
-  components/     # React components
-  stores/         # Zustand state management
-  types/          # TypeScript type definitions
+  components/     # UI components + icon library
+  stores/         # Zustand stores:
+    authStore.ts        # user auth
+    ui/                 # UI-specific stores
+      dashboardStore.ts       
+      floorPlanViewStore.ts   
+      taskCreationModalStore.ts
+      checklistStore.ts
+  database/       # RxDB setup
+  types/          # TypeScript types
+  utils/          # helper functions
 ```
 
 ## Roadmap
 
 ### Floor Plan Navigation
 
-- [ ] **Mouse wheel zooming** - Zoom in/out using mouse wheel
-- [ ] **Click-and-drag panning** - Pan around floor plan by dragging
-- [ ] **Trackpad pinch gestures** - Multi-touch zoom on trackpads and touch devices
-- [ ] **Viewport manipulation** - Programmatic viewport control (fit-to-view, center on task, etc.)
+- [ ] **Mouse wheel zooming** 
+- [ ] **Trackpad pinch gestures** 
+- [ ] **Mobile device support** for PixiJS touch interactions
+- [ ] **Viewport controls** - fit-to-view, center on task
 
-### Future Enhancements
+### Future Ideas
 
-- [ ] Keyboard shortcuts for navigation
-- [ ] Mini-map overview for large floor plans
-- [ ] Smooth zoom/pan animations
-- [ ] Zoom level indicators
+- [ ] Keyboard shortcuts
+- [ ] Mini-map for large plans
+- [ ] Smooth animations
+- [ ] **Collaborative mode** with WebSocket sync (Figma/GDocs style)
+
+## Development Timeline
+
+See [docs/timesheet.md](docs/timesheet.md) for detailed development progress:
+
+**2025-09-24:** Research & Architecture (6hr)  
+**2025-09-25:** PixiJS viewport + RxDB integration (8hr)  
+**2025-09-26:** UX polish + store optimization (7hr)  
+
+**Total:** 21 hours over 3 days

@@ -1,4 +1,3 @@
-/* Default checklist template */
 export const DEFAULT_CHECKLIST = {
   name: 'Standard Construction Task',
   defaultItems: [
@@ -11,7 +10,6 @@ export const DEFAULT_CHECKLIST = {
   ],
 } as const;
 
-/* FloorPlan rendering constants */
 export const FLOOR_PLAN_CONSTANTS = {
   DEFAULT_WIDTH: 800,
   DEFAULT_HEIGHT: 600,

@@ -1,12 +1,12 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import * as PIXI from 'pixi.js';
 
-import { taskStore } from '../stores/taskStore';
-import { authStore } from '../stores/authStore';
-import { useReactiveComponent } from '../hooks/useReactiveComponent';
+import { useAuthStore } from '../stores/authStore';
+import { useFloorPlanViewStore } from '../stores/ui/floorPlanViewStore';
 import { FLOOR_PLAN_CONSTANTS } from '../constants';
-import type { TaskDocument, TaskCoordinates, UserSession } from '../types';
+import type { TaskDocument, TaskCoordinates } from '../types';
 import { throttle } from '../utils/async';
+import FPSCounter from './FPSCounter';
 
 interface FloorPlanViewProps {
   onTaskCreate?: (coordinates: TaskCoordinates) => void;
@@ -14,9 +14,16 @@ interface FloorPlanViewProps {
 
 class FloorPlanRenderer {
   private pixiApp: PIXI.Application | null = null;
+  private contentContainer: PIXI.Container | null = null;
   private floorPlanSprite: PIXI.Sprite | null = null;
   private markerContainer: PIXI.Container | null = null;
   private markerTextures: Map<string, PIXI.Graphics> = new Map();
+
+  private isDragging: boolean = false;
+  private dragStart: { x: number; y: number } | null = null;
+  private contentStartPos: { x: number; y: number } | null = null;
+
+  private clickStartPosition: { x: number; y: number } | null = null;
 
   constructor() {}
 
@@ -96,12 +103,66 @@ class FloorPlanRenderer {
       powerPreference: 'high-performance',
     });
 
+    this.contentContainer = new PIXI.Container();
     this.markerContainer = new PIXI.Container();
 
-    this.pixiApp.stage.addChild(this.markerContainer);
+    this.pixiApp.stage.addChild(this.contentContainer);
+    this.contentContainer.addChild(this.markerContainer);
+
+    this.enableDragPanning();
+
     container.appendChild(this.pixiApp.canvas);
 
     await this.loadFloorPlan('/sample-floor-plan.png');
+  }
+
+  private enableDragPanning(): void {
+    if (!this.contentContainer || !this.pixiApp) {
+      return;
+    }
+
+    this.contentContainer.interactive = true;
+    this.contentContainer.cursor = 'grab';
+
+    this.pixiApp.stage.interactive = true;
+
+    this.contentContainer.on('pointerdown', this.onDragStart.bind(this));
+    this.pixiApp.stage.on('pointermove', this.onDragMove.bind(this));
+    this.pixiApp.stage.on('pointerup', this.onDragEnd.bind(this));
+    this.pixiApp.stage.on('pointerupoutside', this.onDragEnd.bind(this));
+  }
+
+  private onDragStart(event: PIXI.FederatedPointerEvent): void {
+    if (!this.contentContainer) return;
+
+    this.isDragging = true;
+    this.dragStart = { x: event.global.x, y: event.global.y };
+    this.contentStartPos = { x: this.contentContainer.x, y: this.contentContainer.y };
+    this.contentContainer.cursor = 'grabbing';
+  }
+
+  private onDragMove(event: PIXI.FederatedPointerEvent): void {
+    if (!this.isDragging || !this.dragStart || !this.contentStartPos || !this.contentContainer) {
+      return;
+    }
+
+    const deltaX = event.global.x - this.dragStart.x;
+    const deltaY = event.global.y - this.dragStart.y;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    if (distance > 5) {
+      this.contentContainer.x = this.contentStartPos.x + deltaX;
+      this.contentContainer.y = this.contentStartPos.y + deltaY;
+    }
+  }
+
+  private onDragEnd(): void {
+    if (!this.contentContainer) return;
+
+    this.isDragging = false;
+    this.dragStart = null;
+    this.contentStartPos = null;
+    this.contentContainer.cursor = 'grab';
   }
 
   private async loadFloorPlan(imagePath: string) {
@@ -113,12 +174,11 @@ class FloorPlanRenderer {
       const texture = await PIXI.Assets.load(imagePath);
 
       if (this.floorPlanSprite) {
-        this.pixiApp!.stage.removeChild(this.floorPlanSprite);
+        this.contentContainer!.removeChild(this.floorPlanSprite);
       }
 
       this.floorPlanSprite = new PIXI.Sprite(texture);
 
-      /* Scale to fit container, maintain aspect ratio */
       const appWidth = this.pixiApp!.screen.width;
       const appHeight = this.pixiApp!.screen.height;
       const scaleX = appWidth / texture.width;
@@ -130,15 +190,12 @@ class FloorPlanRenderer {
       this.floorPlanSprite.x = appWidth / 2;
       this.floorPlanSprite.y = appHeight / 2;
 
-      this.pixiApp!.stage.addChildAt(this.floorPlanSprite, 0);
+      this.contentContainer!.addChildAt(this.floorPlanSprite, 0);
 
       if (this.markerContainer) {
-        /* Position marker container to match floor plan transformations */
         this.markerContainer.scale.set(scale);
         this.markerContainer.x = appWidth / 2;
         this.markerContainer.y = appHeight / 2;
-
-        this.pixiApp!.stage.addChild(this.markerContainer);
       }
     } catch (error) {
       console.error('Failed to load floor plan image:', error);
@@ -147,14 +204,22 @@ class FloorPlanRenderer {
   }
 
   screenToFloorPlanCoords(screenX: number, screenY: number): { x: number; y: number } | null {
-    if (!this.floorPlanSprite) {
+    if (!this.floorPlanSprite || !this.contentContainer) {
       return null;
     }
 
-    const bounds = this.floorPlanSprite.getBounds();
+    const adjustedScreenX = screenX - this.contentContainer.x;
+    const adjustedScreenY = screenY - this.contentContainer.y;
 
-    const relativeX = (screenX - bounds.x) / bounds.width;
-    const relativeY = (screenY - bounds.y) / bounds.height;
+    const bounds = this.floorPlanSprite.getBounds();
+    const localBounds = this.floorPlanSprite.getLocalBounds();
+
+    const relativeX =
+      (adjustedScreenX - (bounds.x - this.contentContainer.x)) /
+      (localBounds.width * this.floorPlanSprite.scale.x);
+    const relativeY =
+      (adjustedScreenY - (bounds.y - this.contentContainer.y)) /
+      (localBounds.height * this.floorPlanSprite.scale.y);
 
     if (!this.validateRelativeCoordinates(relativeX, relativeY)) {
       return null;
@@ -202,7 +267,6 @@ class FloorPlanRenderer {
     const status = this.getTaskOverallStatus(task);
     const marker = this.createMarkerGraphics(status);
 
-    /* Convert relative coordinates (0-1) to floor plan local coordinates */
     const texture = this.floorPlanSprite.texture;
     const localX = (task.coordinates.x - 0.5) * texture.width;
     const localY = (task.coordinates.y - 0.5) * texture.height;
@@ -214,7 +278,6 @@ class FloorPlanRenderer {
     this.markerContainer!.addChild(marker);
   }
 
-  /* Selective repaint - O(changed) complexity */
   repaintChangedMarkers(changedTaskIds: Set<string>, tasks: TaskDocument[]): void {
     if (!this.ensureMarkerContainer()) {
       return;
@@ -240,11 +303,18 @@ class FloorPlanRenderer {
 
     const doneCount = checklist.filter(item => item.status === 'done').length;
     const blockedCount = checklist.filter(item => item.status === 'blocked').length;
-    const inProgressCount = checklist.filter(item => item.status === 'in_progress').length;
+    const notStartedCount = checklist.filter(item => item.status === 'not_started').length;
 
+    // Highest priority: if any item is blocked, task is blocked (red marker)
     if (blockedCount > 0) return 'blocked';
+    
+    // All items done
     if (doneCount === checklist.length) return 'done';
-    if (inProgressCount > 0) return 'in_progress';
+    
+    // Any item is not in initial state - task is in progress (yellow marker)  
+    if (notStartedCount < checklist.length) return 'in_progress';
+    
+    // All items are not started
     return 'not_started';
   }
 
@@ -271,11 +341,23 @@ class FloorPlanRenderer {
     this.makeInteractive(this.floorPlanSprite, 'crosshair');
 
     this.floorPlanSprite.on('pointerdown', event => {
-      const coords = this.screenToFloorPlanCoords(event.global.x, event.global.y);
+      this.clickStartPosition = { x: event.global.x, y: event.global.y };
+    });
 
-      if (coords) {
-        callback(coords);
+    this.floorPlanSprite.on('pointerup', event => {
+      if (this.clickStartPosition) {
+        const deltaX = event.global.x - this.clickStartPosition.x;
+        const deltaY = event.global.y - this.clickStartPosition.y;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+        if (distance <= 5) {
+          const coords = this.screenToFloorPlanCoords(event.global.x, event.global.y);
+          if (coords) {
+            callback(coords);
+          }
+        }
       }
+      this.clickStartPosition = null;
     });
   }
 
@@ -293,7 +375,7 @@ class FloorPlanRenderer {
     const { width, height } = this.getElementDimensions(mountElement);
     this.pixiApp!.renderer.resize(width, height);
 
-    if (this.floorPlanSprite && this.markerContainer) {
+    if (this.floorPlanSprite && this.markerContainer && this.contentContainer) {
       const texture = this.floorPlanSprite.texture;
       const scaleX = width / texture.width;
       const scaleY = height / texture.height;
@@ -314,8 +396,6 @@ class FloorPlanRenderer {
 }
 
 const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
-  const { when } = useReactiveComponent();
-
   const throttler = throttle(0);
 
   const renderRef = useRef<HTMLDivElement>(null);
@@ -326,28 +406,127 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
     handleResize: () => void;
   } | null>(null);
 
-  const [tasks, setTasks] = useState<TaskDocument[]>([]);
-  const [tasksNeedingRepaint, setTasksNeedingRepaint] = useState<Set<string>>(new Set());
-  const [userSession, setUserSession] = useState<UserSession | null>(null);
-  const [engineReady, setEngineReady] = useState<boolean>(false);
+  const {
+    tasks,
+    tasksNeedingRepaint,
+    userSession,
+    setUserSession,
+    engineReady,
+    setEngineReady,
+    loadTasksForFloorPlan,
+    clearRepaintMarkers,
+    cleanup,
+  } = useFloorPlanViewStore();
 
-  const clearRepaintMarkers = taskStore.clearRepaintMarkers.bind(taskStore);
+  const createPerformanceTestTasks = useCallback(async () => {
+    if (!userSession) {
+      console.error('[ERROR] DEBUG: No user session available');
+      return;
+    }
+
+    try {
+      const tasksToCreate = [];
+
+      for (let i = 0; i < 1000; i++) {
+        const x = 0.1 + Math.random() * 0.8;
+        const y = 0.1 + Math.random() * 0.8;
+
+        const taskWithTemplate = {
+          id: crypto.randomUUID(),
+          userId: userSession.userId,
+          title: `Performance Test Task ${i + 1}`,
+          coordinates: { x, y },
+          checklistName: 'Standard Construction Task',
+          checklist: [
+            {
+              id: crypto.randomUUID(),
+              text: 'Review specifications',
+              status: 'not_started' as const,
+              order: 1,
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: crypto.randomUUID(),
+              text: 'Prepare materials',
+              status: 'not_started' as const,
+              order: 2,
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: crypto.randomUUID(),
+              text: 'Set up work area',
+              status: 'not_started' as const,
+              order: 3,
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: crypto.randomUUID(),
+              text: 'Execute task',
+              status: 'not_started' as const,
+              order: 4,
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: crypto.randomUUID(),
+              text: 'Quality check',
+              status: 'not_started' as const,
+              order: 5,
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: crypto.randomUUID(),
+              text: 'Clean up',
+              status: 'not_started' as const,
+              order: 6,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          version: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        tasksToCreate.push(taskWithTemplate);
+      }
+
+      await userSession.database.tasks.bulkInsert(tasksToCreate);
+    } catch (error) {
+      console.error('[ERROR] DEBUG: Failed to create performance test tasks:', error);
+    }
+  }, [userSession]);
 
   useEffect(() => {
-    when(authStore.userSession$, session => {
-      setUserSession(session);
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).createPerformanceTestTasks = createPerformanceTestTasks;
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (window as any).createPerformanceTestTasks;
+      }
+    };
+  }, [createPerformanceTestTasks]);
+
+  useEffect(() => {
+    const unsubscribe = useAuthStore.subscribe(state => {
+      setUserSession(state.userSession);
+
+      if (state.userSession) {
+        loadTasksForFloorPlan(state.userSession);
+      }
     });
 
-    when(taskStore.tasks$, taskList => {
-      setTasks(taskList as TaskDocument[]);
-    });
+    const currentSession = useAuthStore.getState().userSession;
+    if (currentSession) {
+      setUserSession(currentSession);
+      loadTasksForFloorPlan(currentSession);
+    }
 
-    when(taskStore.tasksNeedingRepaint$, repaintSet => {
-      setTasksNeedingRepaint(repaintSet as Set<string>);
-    });
-  });
+    return unsubscribe;
+  }, [setUserSession, loadTasksForFloorPlan]);
 
-  /* Stable callback to prevent re-initialization cycles */
   const stableOnTaskCreate = useCallback(
     (coords: { x: number; y: number }) => {
       if (onTaskCreate) {
@@ -357,12 +536,10 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
     [onTaskCreate]
   );
 
-  /* Helper to check if renderer is available */
   const isRendererReady = useCallback(() => {
     return !!engineRef.current?.renderer;
   }, []);
 
-  /* Initialize PixiJS renderer - stable dependencies */
   useEffect(() => {
     const mountElement = renderRef.current;
     if (!mountElement) {
@@ -419,20 +596,16 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
       initRenderer();
     });
 
-    // Cleanup function
     return () => {
       if (engineRef.current) {
         const { renderer, view, handleResize } = engineRef.current;
 
-        // Remove event listeners
         window.removeEventListener('resize', handleResize);
 
-        // Remove from DOM
         if (view.parentNode === mountElement) {
           mountElement.removeChild(view);
         }
 
-        // Destroy renderer (this handles PixiJS app destruction internally)
         renderer.destroy();
 
         engineRef.current = null;
@@ -440,7 +613,6 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
     };
   }, [stableOnTaskCreate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* Reactive stream subscription - combines PixiJS init complete + RxDB task stream */
   useEffect(() => {
     if (!userSession || !engineReady || !engineRef.current?.renderer) {
       return;
@@ -448,9 +620,7 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
 
     const renderer = engineRef.current.renderer;
 
-    if (tasks && tasks.length > 0) {
-      renderer.renderAllMarkers(tasks);
-    }
+    renderer.renderAllMarkers(tasks);
   }, [engineReady, userSession, tasks]);
 
   useEffect(() => {
@@ -473,12 +643,20 @@ const FloorPlanView: React.FC<FloorPlanViewProps> = ({ onTaskCreate }) => {
     };
   }, [isRendererReady]);
 
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
+
   return (
     <div
       ref={renderRef}
       className="fixed inset-0 w-screen h-screen bg-gray-100 overflow-hidden"
       style={{ cursor: onTaskCreate ? 'crosshair' : 'default', touchAction: 'none' }}
-    ></div>
+    >
+      <FPSCounter position="top-right" showDetails={true} />
+    </div>
   );
 };
 

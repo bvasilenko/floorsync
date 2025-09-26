@@ -1,34 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
-import { authStore } from './stores/authStore';
-import { useReactiveComponent } from './hooks/useReactiveComponent';
-import type { UserSession } from './types';
+import { useAuthStore } from './stores/authStore';
 
 function App() {
-  const { when } = useReactiveComponent();
-
-  const [userSession, setUserSession] = useState<UserSession | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const { userSession, isLoading, restoreSession } = useAuthStore();
 
   useEffect(() => {
-    when(authStore.userSession$, session => {
-      setUserSession(session);
-    });
-
-    when(authStore.isLoading$, loading => {
-      setIsLoading(loading);
-    });
-
-    authStore.restoreSession();
-  }, [when]);
+    restoreSession();
+  }, [restoreSession]);
 
   const shouldShowLoading = () => {
-    return authStore.isLoading || isLoading;
+    return isLoading;
   };
 
   if (shouldShowLoading()) {

@@ -15,6 +15,7 @@
     "precommit": "npm run format:check && npm run lint"
   },
   "dependencies": {
+    "@tailwindcss/line-clamp": "^0.4.4",
     "@types/pixi.js": "^4.8.9",
     "ajv": "^8.17.1",
     "dexie": "^4.2.0",
@@ -23,7 +24,6 @@
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.1",
     "rxdb": "^16.19.1",
-    "rxjs": "^7.8.2",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

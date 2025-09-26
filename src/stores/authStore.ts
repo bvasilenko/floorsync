@@ -1,95 +1,57 @@
 import { create } from 'zustand';
-import { BehaviorSubject, Observable } from 'rxjs';
 import { createUserDatabase } from '../database';
 import { storeAuthState, getStoredAuthState, clearAuthState } from '../utils/session';
+import { useDashboardStore } from './ui/dashboardStore';
+import { useFloorPlanViewStore } from './ui/floorPlanViewStore';
 import type { UserSession } from '../types';
-// import { sleep } from '../utils/async';
 
-interface UnifiedAuthStoreInterface {
+export interface AuthState {
   userSession: UserSession | null;
   isLoading: boolean;
   error: string | null;
+}
+
+export interface AuthActions {
+  setUserSession: (session: UserSession | null) => void;
+  setIsLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  clearError: () => void;
 
   login: (userId: string) => Promise<void>;
   logout: () => Promise<void>;
   initializeUser: (userId: string) => Promise<void>;
-  clearError: () => void;
   restoreSession: () => Promise<void>;
-
-  userSession$: Observable<UserSession | null>;
-  isLoading$: Observable<boolean>;
-  error$: Observable<string | null>;
 }
 
-interface InternalAuthStore {
-  userSession: UserSession | null;
-  isLoading: boolean;
-  error: string | null;
-}
+export type AuthStore = AuthState & AuthActions;
 
-class UnifiedAuthStore implements UnifiedAuthStoreInterface {
-  private zustandStore = create<InternalAuthStore>(() => ({
-    userSession: null,
-    isLoading: false,
-    error: null,
-  }));
+const initialState: AuthState = {
+  userSession: null,
+  isLoading: false,
+  error: null,
+};
 
-  private userSessionSubject = new BehaviorSubject<UserSession | null>(null);
-  private isLoadingSubject = new BehaviorSubject<boolean>(false);
-  private errorSubject = new BehaviorSubject<string | null>(null);
+export const useAuthStore = create<AuthStore>((set, get) => ({
+  ...initialState,
 
-  get userSession(): UserSession | null {
-    return this.zustandStore.getState().userSession;
-  }
+  setUserSession: session => set({ userSession: session }),
 
-  get isLoading(): boolean {
-    return this.zustandStore.getState().isLoading;
-  }
+  setIsLoading: loading => set({ isLoading: loading }),
 
-  get error(): string | null {
-    return this.zustandStore.getState().error;
-  }
+  setError: error => set({ error }),
 
-  get userSession$(): Observable<UserSession | null> {
-    return this.userSessionSubject.asObservable();
-  }
+  clearError: () => set({ error: null }),
 
-  get isLoading$(): Observable<boolean> {
-    return this.isLoadingSubject.asObservable();
-  }
-
-  get error$(): Observable<string | null> {
-    return this.errorSubject.asObservable();
-  }
-
-  private setState(partial: Partial<InternalAuthStore>): void {
-    this.zustandStore.setState(partial);
-
-    if (typeof partial.userSession !== 'undefined') {
-      this.userSessionSubject.next(partial.userSession);
-    }
-    if (typeof partial.isLoading !== 'undefined') {
-      this.isLoadingSubject.next(partial.isLoading);
-    }
-    if (typeof partial.error !== 'undefined') {
-      this.errorSubject.next(partial.error);
-    }
-  }
-
-  async login(userName: string): Promise<void> {
+  login: async (userName: string) => {
     if (!userName.trim()) {
-      this.setState({ error: 'User name cannot be empty' });
+      set({ error: 'User name cannot be empty' });
       return;
     }
 
-    this.setState({ isLoading: true, error: null });
+    set({ isLoading: true, error: null });
 
     try {
-      await this.initializeUser(userName.trim());
-
-      if (import.meta.env.DEV) {
-        // await sleep(1000); // Simulate network delay
-      }
+      await get().initializeUser(userName.trim());
 
       storeAuthState({
         userId: userName.trim(),
@@ -97,32 +59,35 @@ class UnifiedAuthStore implements UnifiedAuthStoreInterface {
         timestamp: Date.now(),
       });
 
-      this.setState({ isLoading: false });
+      set({ isLoading: false });
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Login failed';
-      this.setState({
+      set({
         error: errorMsg,
         isLoading: false,
       });
     }
-  }
+  },
 
-  async logout(): Promise<void> {
-    const session = this.userSession;
+  logout: async () => {
+    const session = get().userSession;
 
     if (session?.database) {
       await session.database.close();
     }
 
+    useDashboardStore.getState().resetTasks();
+    useFloorPlanViewStore.getState().resetTasks();
+
     clearAuthState();
 
-    this.setState({
+    set({
       userSession: null,
       error: null,
     });
-  }
+  },
 
-  async initializeUser(userName: string): Promise<void> {
+  initializeUser: async (userName: string) => {
     try {
       const database = await createUserDatabase(userName);
 
@@ -132,39 +97,33 @@ class UnifiedAuthStore implements UnifiedAuthStoreInterface {
         isActive: true,
       };
 
-      this.setState({ userSession });
+      set({ userSession });
     } catch (error) {
       throw new Error(
         `Failed to initialize user database: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
-  }
+  },
 
-  clearError(): void {
-    this.setState({ error: null });
-  }
-
-  async restoreSession(): Promise<void> {
+  restoreSession: async () => {
     const storedAuthState = getStoredAuthState();
 
     if (storedAuthState && storedAuthState.isAuthenticated) {
-      this.setState({ isLoading: true });
+      set({ isLoading: true });
 
       try {
-        await this.initializeUser(storedAuthState.userId);
-        this.setState({ isLoading: false });
+        await get().initializeUser(storedAuthState.userId);
+        set({ isLoading: false });
       } catch (error) {
         console.error('Session restoration failed - database initialization error:', error);
         const errorMsg = 'Failed to restore session - database issue';
-        this.setState({
+        set({
           error: errorMsg,
           isLoading: false,
         });
       }
     }
-  }
-}
+  },
+}));
 
-const unifiedAuthStoreInstance = new UnifiedAuthStore();
-
-export const authStore: UnifiedAuthStoreInterface = unifiedAuthStoreInstance;
+export const authStore = useAuthStore;
