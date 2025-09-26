@@ -29,7 +29,7 @@ npm run lint
 
 ### Performance Testing
 
-[Performance test video](docs/performance-test.mp4)
+https://github.com/user-attachments/assets/279120cb-92be-49ce-a683-94b9626c27e8
 
 Run `window.createPerformanceTestTasks()` in browser console to create 1000 test tasks for performance validation.
 
